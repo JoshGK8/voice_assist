@@ -1,0 +1,19 @@
+# Virtual environments
+voice_assistant_env/
+venv/
+env/
+
+# Downloaded models (user will download these)
+vosk-model-*/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+*.tmp
+*.wav
+
+# Local configuration
+config.local.py
