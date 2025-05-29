@@ -37,20 +37,54 @@ Ziggy prioritizes privacy and local processing:
 
 ### 1. Clone Directory
 ```bash
-git clone --filter=blob:none --sparse https://github.com/JoshGK8/Toolkit.git
-cd Toolkit
-git sparse-checkout set voice_assist
+git clone https://github.com/JoshGK8/voice_assist
 cd voice_assist
 ```
 
 ### 2. Install System Dependencies
+
+You can install the system dependencies either via a shell script or manually. 
+<details>
+  
+<summary>Scripted Install</summary>
+
+ 
+I have provided the same shell script I use to configure my machine (running Ubuntu 24.04):
+
 ```bash
 # Run the system prerequisites installer
-chmod +x system-prerequisites.sh
-./system-prerequisites.sh
-
-# IMPORTANT: Logout and login after running this (for audio group membership)
+chmod +x system_prerequisites.sh
+./system_prerequisites.sh
 ```
+
+</details>
+
+<details>
+  
+<summary>Manual Install</summary>
+
+ 
+Manually install the following:
+
+- ``portaudio19-dev``
+- ``espeak espeak-data libespeak1 libespeak-dev``
+- ``build-essential python3-dev``
+- ``curl``
+
+Optionally, these tools can help with troubleshooting audio issues:
+
+- ``alsa-utils pulseaudio-utils``
+
+Add your user to the *audio* group:
+
+```bash
+echo "Adding $USER to audio group..."
+sudo usermod -a -G audio $USER
+```
+
+</details>
+
+After installing the prerequisites, log out and back in to complete the group membership update.
 
 ### 3. Set Up Python Environment
 ```bash
