@@ -1,0 +1,23 @@
+# Voice Assistant Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core audio processing
+pyaudio>=0.2.11
+
+# Speech recognition (offline)
+vosk>=0.3.45
+
+# Wake word detection
+pvporcupine>=3.0.0
+
+# HTTP requests for AI integration
+requests>=2.25.1
+
+# Optional: Higher quality text-to-speech
+# Uncomment if you want to use Piper instead of espeak
+# piper-tts>=1.2.0
+
+# Optional: Additional audio processing
+# Uncomment if needed for advanced audio features
+# numpy>=1.21.0
+# scipy>=1.7.0
