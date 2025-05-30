@@ -13,6 +13,9 @@ pvporcupine>=3.0.0
 # HTTP requests for AI integration
 requests>=2.25.1
 
+# System resource monitoring
+psutil>=5.9.0
+
 # Optional: Higher quality text-to-speech
 # Uncomment if you want to use Piper instead of espeak
 # piper-tts>=1.2.0
