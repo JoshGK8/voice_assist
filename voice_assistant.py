@@ -30,11 +30,46 @@ import queue
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
+import psutil  # For memory detection
 
 import requests
 import vosk
 import pyaudio
 import wave
+
+# Resource profile definitions
+RESOURCE_PROFILES = {
+    "minimal": {
+        "name": "Minimal",
+        "description": "Low resource usage for gaming or older systems",
+        "requirements": "4-8GB VRAM",
+        "context_tokens": 8000,
+        "history_limit": 10,
+        "response_tokens": 500,
+        "recording_conversational": 120,  # 2 minutes
+        "recording_command": 30,
+    },
+    "standard": {
+        "name": "Standard",
+        "description": "Balanced performance for everyday use",
+        "requirements": "8-16GB VRAM",
+        "context_tokens": 16000,
+        "history_limit": 25,
+        "response_tokens": 1000,
+        "recording_conversational": 300,  # 5 minutes
+        "recording_command": 60,
+    },
+    "performance": {
+        "name": "Performance",
+        "description": "Maximum capabilities for research and long conversations",
+        "requirements": "16GB+ VRAM",
+        "context_tokens": 32000,
+        "history_limit": 50,
+        "response_tokens": 2000,
+        "recording_conversational": 600,  # 10 minutes
+        "recording_command": 60,
+    }
+}
 
 
 class VoiceAssistant:
@@ -46,6 +81,11 @@ class VoiceAssistant:
         self.is_processing = False
         self.conversational_mode = False  # Track if we're in a conversation
         self.conversation_history = []  # Store conversation context
+        
+        # Resource profile configuration
+        self.current_profile = None
+        self.available_memory = 0
+        self.profile_settings = {}
         
         # Backend configuration
         self.backend_type = None  # 'msty' or 'ollama'
@@ -98,6 +138,9 @@ class VoiceAssistant:
 
             self.vosk_model = vosk.Model(model_path)
             print("✅ Speech recognition model loaded")
+
+            # Detect available memory and select profile
+            self.detect_and_select_profile()
 
             # Detect and setup AI backend
             if not self.setup_ai_backend():
@@ -361,6 +404,153 @@ class VoiceAssistant:
         except Exception as e:
             print(f"Recording error: {e}")
             return None
+
+    def detect_gpu_memory(self):
+        """Detect available GPU memory"""
+        # Try NVIDIA first
+        try:
+            result = subprocess.run(['nvidia-smi', '--query-gpu=memory.total,memory.used', 
+                                   '--format=csv,noheader,nounits'], 
+                                   capture_output=True, text=True, stderr=subprocess.DEVNULL)
+            if result.returncode == 0 and result.stdout.strip():
+                lines = result.stdout.strip().split('\n')
+                if lines and ', ' in lines[0]:
+                    try:
+                        total, used = map(int, lines[0].split(', '))
+                        available = total - used
+                        print(f"🎮 NVIDIA GPU detected: {available}MB available ({total}MB total)")
+                        return total  # Return total memory, not just available
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+        
+        # Try AMD ROCm - with better error handling
+        try:
+            # First check if rocm-smi exists
+            check_result = subprocess.run(['which', 'rocm-smi'], 
+                                        capture_output=True, text=True, stderr=subprocess.DEVNULL)
+            if check_result.returncode == 0:
+                # Run rocm-smi
+                result = subprocess.run(['rocm-smi', '--showmeminfo', 'vram'], 
+                                       capture_output=True, text=True, stderr=subprocess.DEVNULL)
+                if result.returncode == 0 and result.stdout:
+                    # Debug: print first few lines to see format
+                    print(f"🔍 ROCm output preview: {result.stdout[:200]}...")
+                    
+                    # Parse ROCm output - look for VRAM Total Memory in bytes
+                    for line in result.stdout.split('\n'):
+                        if 'VRAM Total Memory (B):' in line:
+                            match = re.search(r':\s*(\d+)', line)
+                            if match:
+                                total_bytes = int(match.group(1))
+                                total_mb = total_bytes // (1024 * 1024)
+                                print(f"🎮 AMD GPU detected: {total_mb}MB total ({total_mb/1024:.1f}GB)")
+                                return total_mb
+        except Exception as e:
+            print(f"⚠️ AMD GPU detection error: {e}")
+        
+        # Alternative AMD detection through /sys/class/drm
+        try:
+            import glob
+            amd_cards = glob.glob('/sys/class/drm/card*/device/mem_info_vram_total')
+            if amd_cards:
+                with open(amd_cards[0], 'r') as f:
+                    vram_bytes = int(f.read().strip())
+                    vram_mb = vram_bytes // (1024 * 1024)
+                    print(f"🎮 AMD GPU detected via sysfs: {vram_mb}MB total ({vram_mb/1024:.1f}GB)")
+                    return vram_mb
+        except Exception:
+            pass
+        
+        # Fallback to system RAM estimation
+        ram_gb = psutil.virtual_memory().total / (1024**3)
+        estimated_vram = min(ram_gb * 0.25, 8) * 1024  # Estimate 25% of RAM or 8GB max
+        print(f"💻 No dedicated GPU detected, using system RAM estimate: {int(estimated_vram)}MB")
+        return int(estimated_vram)
+
+    def detect_and_select_profile(self):
+        """Detect available memory and select appropriate profile"""
+        print("🔍 Detecting system resources...")
+        
+        # Check for command line override
+        if len(sys.argv) > 2 and sys.argv[1] == '--profile':
+            profile_name = sys.argv[2].lower()
+            if profile_name in RESOURCE_PROFILES:
+                self.current_profile = profile_name
+                self.profile_settings = RESOURCE_PROFILES[profile_name].copy()
+                print(f"✅ Using specified profile: {self.profile_settings['name']}")
+                return
+        
+        # Auto-detect based on available memory
+        self.available_memory = self.detect_gpu_memory()
+        memory_gb = self.available_memory / 1024
+        
+        # Select profile based on available memory
+        if memory_gb < 8:
+            self.current_profile = "minimal"
+        elif memory_gb < 16:
+            self.current_profile = "standard"
+        else:
+            self.current_profile = "performance"
+        
+        self.profile_settings = RESOURCE_PROFILES[self.current_profile].copy()
+        print(f"✅ Selected {self.profile_settings['name']} profile ({memory_gb:.1f}GB available)")
+
+    def switch_profile(self, profile_name):
+        """Switch to a different resource profile"""
+        profile_name = profile_name.lower()
+        
+        # Handle aliases
+        aliases = {
+            "gaming": "minimal",
+            "game": "minimal",
+            "low": "minimal",
+            "normal": "standard",
+            "balanced": "standard",
+            "high": "performance",
+            "maximum": "performance",
+            "research": "performance"
+        }
+        
+        profile_name = aliases.get(profile_name, profile_name)
+        
+        if profile_name not in RESOURCE_PROFILES:
+            return f"I don't recognize that profile. Available profiles are: minimal, standard, and performance."
+        
+        if profile_name == self.current_profile:
+            return f"I'm already using the {self.profile_settings['name']} profile."
+        
+        # Switch profile
+        old_profile = self.profile_settings['name']
+        self.current_profile = profile_name
+        self.profile_settings = RESOURCE_PROFILES[profile_name].copy()
+        
+        # Clear excess history if switching to lower profile
+        if len(self.conversation_history) > self.profile_settings['history_limit'] * 2:
+            self.conversation_history = self.conversation_history[-(self.profile_settings['history_limit'] * 2):]
+        
+        return f"Switched from {old_profile} to {self.profile_settings['name']} profile. {self.profile_settings['description']}"
+
+    def get_memory_status(self):
+        """Get current memory usage status"""
+        # For now, return estimated usage based on profile
+        # Real GPU memory tracking would require continuous monitoring
+        if self.current_profile == "minimal":
+            estimated_used = 2000  # 2GB estimated
+        elif self.current_profile == "standard":
+            estimated_used = 4000  # 4GB estimated
+        else:  # performance
+            estimated_used = 6000  # 6GB estimated
+            
+        percent_used = (estimated_used / self.available_memory) * 100 if self.available_memory > 0 else 0
+        
+        return {
+            "total": self.available_memory,
+            "used": estimated_used,
+            "available": self.available_memory - estimated_used,
+            "percent": percent_used
+        }
 
     def get_default_model(self):
         """Get the default model for the current backend"""
@@ -867,7 +1057,8 @@ class VoiceAssistant:
                 {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
             ]
             
-            ai_response = self.query_backend(messages, temperature=0.7, max_tokens=2000)
+            ai_response = self.query_backend(messages, temperature=0.7, 
+                                           max_tokens=self.profile_settings.get('response_tokens', 1000))
             
             if ai_response:
                 # Check if AI indicates it needs online resources
@@ -893,7 +1084,8 @@ class VoiceAssistant:
                 {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
             ]
             
-            ai_response = self.query_backend(messages, temperature=0.7, max_tokens=2000)
+            ai_response = self.query_backend(messages, temperature=0.7, 
+                                           max_tokens=self.profile_settings.get('response_tokens', 1000))
             
             if ai_response:
                 return ai_response
@@ -920,8 +1112,8 @@ class VoiceAssistant:
                  "content": "You are having a friendly conversation. Respond naturally and keep the conversation flowing. Feel free to ask follow-up questions or share related thoughts. Be engaging and personable."}
             ]
             
-            # Dynamic context management based on token count
-            max_context_tokens = 32000  # Conservative limit for Llama models
+            # Dynamic context management based on profile settings
+            max_context_tokens = self.profile_settings.get('context_tokens', 16000)
             system_tokens = self.estimate_tokens(messages[0]['content'])
             current_tokens = system_tokens + self.estimate_tokens(text)
             
@@ -942,7 +1134,8 @@ class VoiceAssistant:
             
             print(f"📊 Context: {current_tokens} tokens, {len(messages)-1} messages from history")
             
-            ai_response = self.query_backend(messages, temperature=0.8, max_tokens=2000)  # Allow longer responses
+            ai_response = self.query_backend(messages, temperature=0.8, 
+                                           max_tokens=self.profile_settings.get('response_tokens', 1000))
             
             if ai_response:
                 # Update conversation history
@@ -970,6 +1163,34 @@ class VoiceAssistant:
             self.conversation_history = []
             print("🧹 Cleared conversation history (user requested)")
             return "local", "Starting fresh. What would you like to talk about?"
+
+        # Profile management commands
+        if 'switch to' in text_lower and any(word in text_lower for word in ['mode', 'profile']):
+            # Extract profile name
+            profile_words = text_lower.split('switch to')[-1].strip()
+            profile_words = profile_words.replace('mode', '').replace('profile', '').strip()
+            return "local", self.switch_profile(profile_words)
+        
+        if 'what profile' in text_lower or 'which profile' in text_lower or 'current profile' in text_lower:
+            mem_status = self.get_memory_status()
+            response = (f"I'm running in {self.profile_settings['name']} mode, "
+                       f"using {mem_status['used']/1024:.1f} gigabytes of {mem_status['total']/1024:.1f} available. "
+                       f"I can maintain {self.profile_settings['history_limit']} conversation exchanges "
+                       f"and record up to {self.profile_settings['recording_conversational']//60} minutes.")
+            return "local", response
+        
+        if 'what profiles' in text_lower or 'available profiles' in text_lower or 'list profiles' in text_lower:
+            response = "I have three profiles: Minimal for gaming or low resources, Standard for everyday use, and Performance for extended conversations. "
+            response += f"You're currently using {self.profile_settings['name']} mode."
+            return "local", response
+        
+        if 'memory' in text_lower and ('using' in text_lower or 'usage' in text_lower or 'status' in text_lower):
+            mem_status = self.get_memory_status()
+            response = f"I'm using {mem_status['used']/1024:.1f} gigabytes of {mem_status['total']/1024:.1f} available, "
+            response += f"that's {mem_status['percent']:.0f} percent. "
+            if mem_status['percent'] > 80:
+                response += "Memory usage is high, you might want to switch to minimal mode."
+            return "local", response
 
         # Time queries
         if any(word in text_lower for word in ['time', 'clock', "what time"]):
@@ -1017,13 +1238,13 @@ class VoiceAssistant:
             # Voice activity detection parameters
             silence_threshold = 1.5  # seconds of silence before stopping
             
-            # Different limits for different modes
+            # Use profile-based limits
             if conversational:
-                max_duration = 600  # 10 minutes for conversational responses
+                max_duration = self.profile_settings.get('recording_conversational', 300)
                 initial_wait = 0.3  # Wait briefly for user to start speaking
                 time.sleep(initial_wait)
             else:
-                max_duration = 60  # 1 minute for initial commands
+                max_duration = self.profile_settings.get('recording_command', 60)
             
             last_speech_time = time.time()
             start_time = time.time()
@@ -1330,7 +1551,8 @@ class VoiceAssistant:
 
     def startup_message(self):
         """Play welcome message on startup"""
-        welcome_msg = f"Welcome. Ziggy is ready to assist you, connected to {self.backend_name} with extended conversation support."
+        memory_gb = self.available_memory / 1024
+        welcome_msg = f"Welcome. Ziggy is ready to assist you, connected to {self.backend_name} in {self.profile_settings['name']} mode with {memory_gb:.1f} gigabytes available."
         print(f"🤖 {welcome_msg}")
         self.speak(welcome_msg, allow_interruption=False)
 
