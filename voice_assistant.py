@@ -867,7 +867,7 @@ class VoiceAssistant:
                 {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
             ]
             
-            ai_response = self.query_backend(messages, temperature=0.7, max_tokens=500)
+            ai_response = self.query_backend(messages, temperature=0.7, max_tokens=2000)
             
             if ai_response:
                 # Check if AI indicates it needs online resources
@@ -893,7 +893,7 @@ class VoiceAssistant:
                 {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
             ]
             
-            ai_response = self.query_backend(messages, temperature=0.7, max_tokens=500)
+            ai_response = self.query_backend(messages, temperature=0.7, max_tokens=2000)
             
             if ai_response:
                 return ai_response
@@ -904,6 +904,13 @@ class VoiceAssistant:
             print(f"AI query error: {e}")
             return "Sorry, there was an error processing your request"
 
+    def estimate_tokens(self, text):
+        """Rough estimate of token count (1 token ≈ 4 chars or 0.75 words)"""
+        # Simple estimation: average of character and word-based counts
+        char_estimate = len(text) / 4
+        word_estimate = len(text.split()) / 0.75
+        return int((char_estimate + word_estimate) / 2)
+    
     def handle_conversational_response(self, text):
         """Handle responses during conversational mode with full context"""
         try:
@@ -913,16 +920,29 @@ class VoiceAssistant:
                  "content": "You are having a friendly conversation. Respond naturally and keep the conversation flowing. Feel free to ask follow-up questions or share related thoughts. Be engaging and personable."}
             ]
             
-            # Add conversation history (limit to last 10 exchanges to manage context size)
-            history_limit = 10
-            start_index = max(0, len(self.conversation_history) - history_limit)
-            for msg in self.conversation_history[start_index:]:
-                messages.append(msg)
+            # Dynamic context management based on token count
+            max_context_tokens = 32000  # Conservative limit for Llama models
+            system_tokens = self.estimate_tokens(messages[0]['content'])
+            current_tokens = system_tokens + self.estimate_tokens(text)
+            
+            # Add conversation history, newest first, until we approach token limit
+            for i in range(len(self.conversation_history) - 1, -1, -1):
+                msg = self.conversation_history[i]
+                msg_tokens = self.estimate_tokens(msg['content'])
+                
+                if current_tokens + msg_tokens > max_context_tokens - 2000:  # Leave room for response
+                    print(f"💭 Context limit reached: including {len(self.conversation_history) - i} most recent messages")
+                    break
+                    
+                messages.insert(1, msg)  # Insert after system message
+                current_tokens += msg_tokens
             
             # Add the current user message
             messages.append({"role": "user", "content": text})
             
-            ai_response = self.query_backend(messages, temperature=0.8, max_tokens=500)
+            print(f"📊 Context: {current_tokens} tokens, {len(messages)-1} messages from history")
+            
+            ai_response = self.query_backend(messages, temperature=0.8, max_tokens=2000)  # Allow longer responses
             
             if ai_response:
                 # Update conversation history
@@ -996,23 +1016,35 @@ class VoiceAssistant:
             
             # Voice activity detection parameters
             silence_threshold = 1.5  # seconds of silence before stopping
-            max_duration = 30  # maximum recording duration in seconds
             
-            # For conversational mode, start with a shorter initial wait
+            # Different limits for different modes
             if conversational:
+                max_duration = 600  # 10 minutes for conversational responses
                 initial_wait = 0.3  # Wait briefly for user to start speaking
                 time.sleep(initial_wait)
+            else:
+                max_duration = 60  # 1 minute for initial commands
             
             last_speech_time = time.time()
             start_time = time.time()
             has_speech = False
             
+            last_feedback_time = start_time
+            
             while True:
                 current_time = time.time()
+                elapsed = current_time - start_time
+                
+                # Provide periodic feedback for long recordings
+                if elapsed > 30 and (current_time - last_feedback_time) > 30:
+                    minutes = int(elapsed / 60)
+                    seconds = int(elapsed % 60)
+                    print(f"⏱️ Recording: {minutes}:{seconds:02d} elapsed...")
+                    last_feedback_time = current_time
                 
                 # Check for maximum duration
-                if current_time - start_time > max_duration:
-                    print("⏱️ Maximum recording duration reached")
+                if elapsed > max_duration:
+                    print(f"⏱️ Maximum recording duration reached ({int(max_duration/60)} minutes)")
                     break
                 
                 # Read audio chunk
@@ -1036,7 +1068,13 @@ class VoiceAssistant:
                 
                 # Check for silence after speech
                 if has_speech and (current_time - last_speech_time) > silence_threshold:
-                    print(f"🔇 Pause detected after {current_time - start_time:.1f} seconds")
+                    duration = current_time - start_time
+                    if duration < 60:
+                        print(f"🔇 Pause detected after {duration:.1f} seconds")
+                    else:
+                        minutes = int(duration / 60)
+                        seconds = int(duration % 60)
+                        print(f"🔇 Pause detected after {minutes}:{seconds:02d}")
                     break
 
             stream.close()
@@ -1292,7 +1330,7 @@ class VoiceAssistant:
 
     def startup_message(self):
         """Play welcome message on startup"""
-        welcome_msg = f"Welcome. Ziggy is ready to assist you, connected to {self.backend_name}."
+        welcome_msg = f"Welcome. Ziggy is ready to assist you, connected to {self.backend_name} with extended conversation support."
         print(f"🤖 {welcome_msg}")
         self.speak(welcome_msg, allow_interruption=False)
 
