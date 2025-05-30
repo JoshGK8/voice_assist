@@ -40,13 +40,20 @@ import wave
 class VoiceAssistant:
     def __init__(self):
         # Configuration
-        self.msty_url = "http://localhost:10000"
         self.wake_word = "ziggy"
         self.shutdown_phrase = "take a break"
         self.is_listening = True
         self.is_processing = False
         self.conversational_mode = False  # Track if we're in a conversation
         self.conversation_history = []  # Store conversation context
+        
+        # Backend configuration
+        self.backend_type = None  # 'msty' or 'ollama'
+        self.backend_url = None
+        self.backend_name = None
+        self.backend_process = None  # Store process if we start it
+        self.msty_url = "http://localhost:10000"
+        self.ollama_url = "http://localhost:11434"
 
         # Audio configuration
         self.sample_rate = 16000
@@ -92,22 +99,12 @@ class VoiceAssistant:
             self.vosk_model = vosk.Model(model_path)
             print("✅ Speech recognition model loaded")
 
-            # Test AI connection
-            try:
-                response = requests.get(f"{self.msty_url}/v1/models", timeout=5)
-                if response.status_code == 200:
-                    models_data = response.json()
-                    if 'data' in models_data and models_data['data']:
-                        self.default_model = models_data['data'][0]['id']  # Use first available
-                        print(f"✅ AI backend connected (model: {self.default_model})")
-                    else:
-                        self.default_model = "llama3.2:latest"  # Fallback
-                        print("✅ AI backend connected (using fallback model)")
-                else:
-                    print("❌ AI backend not responding correctly")
-                    return
-            except Exception as e:
-                print(f"❌ Cannot connect to AI backend: {e}")
+            # Detect and setup AI backend
+            if not self.setup_ai_backend():
+                return
+
+            # Get default model for the backend
+            if not self.get_default_model():
                 return
 
             # Test text-to-speech
@@ -149,6 +146,317 @@ class VoiceAssistant:
         except Exception as e:
             print(f"❌ Setup failed: {e}")
             self.setup_successful = False
+
+    def check_backend_running(self, url, backend_type):
+        """Check if a backend is running at the given URL"""
+        try:
+            if backend_type == "msty":
+                # First check if it's actually Ollama serving OpenAI-compatible API
+                try:
+                    ollama_check = requests.get(f"{url}/api/tags", timeout=1)
+                    if ollama_check.status_code == 200:
+                        # It's Ollama, not Msty
+                        return False
+                except:
+                    pass
+                
+                # Now check for Msty
+                response = requests.get(f"{url}/v1/models", timeout=2)
+                if response.status_code == 200:
+                    data = response.json()
+                    # Check for model ownership pattern - Ollama uses "library", Msty doesn't
+                    if 'data' in data and data['data']:
+                        # Check if this is Ollama masquerading as OpenAI API
+                        first_model = data['data'][0]
+                        if first_model.get('owned_by') == 'library':
+                            return False  # This is Ollama, not Msty
+                        return True  # This is likely Msty
+                    return False
+            else:  # ollama
+                response = requests.get(f"{url}/api/tags", timeout=2)
+                if response.status_code == 200:
+                    data = response.json()
+                    return 'models' in data
+            return False
+        except:
+            return False
+
+    def start_backend(self, backend_type):
+        """Start the specified backend"""
+        try:
+            if backend_type == "msty":
+                print("🚀 Starting Msty backend...")
+                # Check if msty command exists
+                result = subprocess.run(['which', 'msty'], capture_output=True, text=True)
+                if result.returncode != 0:
+                    print("❌ Msty not found. Please install it first.")
+                    return False
+                
+                # Start msty serve in background
+                self.backend_process = subprocess.Popen(
+                    ['msty', 'serve'],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                
+            else:  # ollama
+                print("🚀 Starting Ollama backend...")
+                # Check if ollama command exists
+                result = subprocess.run(['which', 'ollama'], capture_output=True, text=True)
+                if result.returncode != 0:
+                    print("❌ Ollama not found. Please install it first.")
+                    return False
+                
+                # Start ollama serve in background
+                self.backend_process = subprocess.Popen(
+                    ['ollama', 'serve'],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            
+            # Wait for backend to be ready (up to 30 seconds)
+            url = self.msty_url if backend_type == "msty" else self.ollama_url
+            for i in range(30):
+                time.sleep(1)
+                if self.check_backend_running(url, backend_type):
+                    print(f"✅ {backend_type.capitalize()} backend started successfully")
+                    return True
+                if i % 5 == 0:
+                    print(f"⏳ Waiting for {backend_type} to start... ({i+1}/30)")
+            
+            print(f"❌ {backend_type.capitalize()} failed to start within 30 seconds")
+            return False
+            
+        except Exception as e:
+            print(f"❌ Error starting {backend_type}: {e}")
+            return False
+
+    def setup_ai_backend(self):
+        """Detect running AI backend or start one"""
+        print("🔍 Detecting AI backends...")
+        
+        # Check if Msty is running
+        print(f"   Checking Msty at {self.msty_url}...")
+        if self.check_backend_running(self.msty_url, "msty"):
+            self.backend_type = "msty"
+            self.backend_url = self.msty_url
+            self.backend_name = "Msty"
+            print(f"✅ Connected to Msty backend")
+            return True
+        
+        # Check if Ollama is running
+        print(f"   Checking Ollama at {self.ollama_url}...")
+        if self.check_backend_running(self.ollama_url, "ollama"):
+            self.backend_type = "ollama"
+            self.backend_url = self.ollama_url
+            self.backend_name = "Ollama"
+            print(f"✅ Connected to Ollama backend")
+            return True
+        
+        # No backend running - ask user which to start
+        print("❌ No AI backend detected")
+        
+        # Use espeak to ask since we haven't fully initialized yet
+        ask_text = "No AI backend detected. Would you like me to start Misty or Ollama?"
+        subprocess.run([
+            'espeak',
+            '-s', '150',
+            '-v', 'en',
+            ask_text
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Record user response
+        print("🎤 Listening for your choice...")
+        audio_data = self.record_backend_choice()
+        if not audio_data:
+            print("❌ No response detected")
+            return False
+        
+        # Convert to text
+        choice_text = self.speech_to_text(audio_data)
+        if not choice_text:
+            print("❌ Couldn't understand response")
+            return False
+        
+        print(f"📝 You said: '{choice_text}'")
+        choice_lower = choice_text.lower()
+        
+        # Parse choice
+        if "msty" in choice_lower or "misty" in choice_lower:
+            backend_choice = "msty"
+        elif "ollama" in choice_lower:
+            backend_choice = "ollama"
+        else:
+            # Ask again with clearer options
+            clarify_text = "I didn't catch that. Please say 'Misty' or 'Ollama'"
+            subprocess.run([
+                'espeak',
+                '-s', '150',
+                '-v', 'en',
+                clarify_text
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            audio_data = self.record_backend_choice()
+            if not audio_data:
+                return False
+            
+            choice_text = self.speech_to_text(audio_data)
+            choice_lower = choice_text.lower()
+            
+            if "msty" in choice_lower or "misty" in choice_lower:
+                backend_choice = "msty"
+            elif "ollama" in choice_lower:
+                backend_choice = "ollama"
+            else:
+                print("❌ Could not determine backend choice")
+                return False
+        
+        # Start the chosen backend
+        if self.start_backend(backend_choice):
+            if backend_choice == "msty":
+                self.backend_type = "msty"
+                self.backend_url = self.msty_url
+                self.backend_name = "Msty"
+            else:
+                self.backend_type = "ollama"
+                self.backend_url = self.ollama_url
+                self.backend_name = "Ollama"
+            
+            # Announce connection
+            announce_text = f"Successfully connected to {self.backend_name}"
+            subprocess.run([
+                'espeak',
+                '-s', '150',
+                '-v', 'en',
+                announce_text
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            return True
+        
+        return False
+
+    def record_backend_choice(self):
+        """Simple recording for backend choice - before full init"""
+        try:
+            if not self.audio:
+                self.audio = pyaudio.PyAudio()
+            
+            stream = self.audio.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.sample_rate,
+                input=True,
+                frames_per_buffer=self.chunk_size
+            )
+            
+            frames = []
+            # Record for 3 seconds
+            for _ in range(0, int(self.sample_rate / self.chunk_size * 3)):
+                data = stream.read(self.chunk_size, exception_on_overflow=False)
+                frames.append(data)
+            
+            stream.close()
+            return b''.join(frames)
+            
+        except Exception as e:
+            print(f"Recording error: {e}")
+            return None
+
+    def get_default_model(self):
+        """Get the default model for the current backend"""
+        try:
+            if self.backend_type == "msty":
+                response = requests.get(f"{self.backend_url}/v1/models", timeout=5)
+                if response.status_code == 200:
+                    models_data = response.json()
+                    if 'data' in models_data and models_data['data']:
+                        self.default_model = models_data['data'][0]['id']
+                        print(f"✅ Using model: {self.default_model}")
+                        return True
+                    else:
+                        self.default_model = "llama3.2:latest"
+                        print(f"✅ Using fallback model: {self.default_model}")
+                        return True
+            else:  # ollama
+                response = requests.get(f"{self.backend_url}/api/tags", timeout=5)
+                if response.status_code == 200:
+                    models_data = response.json()
+                    if 'models' in models_data and models_data['models']:
+                        self.default_model = models_data['models'][0]['name']
+                        print(f"✅ Using model: {self.default_model}")
+                        return True
+                    else:
+                        self.default_model = "llama2"
+                        print(f"✅ Using fallback model: {self.default_model}")
+                        return True
+                        
+            print("❌ Could not get model list from backend")
+            return False
+                
+        except Exception as e:
+            print(f"❌ Error getting models: {e}")
+            return False
+
+    def query_backend(self, messages, temperature=0.7, max_tokens=500):
+        """Unified interface to query either backend"""
+        try:
+            if self.backend_type == "msty":
+                # Msty uses OpenAI-compatible API
+                payload = {
+                    "model": self.default_model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens
+                }
+                
+                response = requests.post(
+                    f"{self.backend_url}/v1/chat/completions",
+                    json=payload,
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    return result['choices'][0]['message']['content'].strip()
+                    
+            else:  # ollama
+                # Ollama uses its own API format
+                # Convert messages to Ollama format
+                prompt = ""
+                for msg in messages:
+                    if msg['role'] == 'system':
+                        prompt += f"System: {msg['content']}\n"
+                    elif msg['role'] == 'user':
+                        prompt += f"User: {msg['content']}\n"
+                    elif msg['role'] == 'assistant':
+                        prompt += f"Assistant: {msg['content']}\n"
+                prompt += "Assistant: "
+                
+                payload = {
+                    "model": self.default_model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": max_tokens
+                    }
+                }
+                
+                response = requests.post(
+                    f"{self.backend_url}/api/generate",
+                    json=payload,
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    return result['response'].strip()
+            
+            return None
+            
+        except Exception as e:
+            print(f"Backend query error: {e}")
+            return None
 
     def speak(self, text, allow_interruption=True):
         """Convert text to speech with optional interruption capability"""
@@ -338,8 +646,12 @@ class VoiceAssistant:
 
     def contains_question(self, text):
         """Check if the text contains a question"""
+        # Debug print
+        print(f"🔍 Checking for question in: {text[:100]}...")
+        
         # Check for question marks
         if '?' in text:
+            print("   ✓ Found question mark")
             return True
         
         # Check for question words at the beginning of sentences
@@ -355,8 +667,10 @@ class VoiceAssistant:
         for sentence in sentences:
             sentence = sentence.strip().lower()
             if any(sentence.startswith(word + ' ') for word in question_starters):
+                print(f"   ✓ Found question starter: {sentence[:30]}...")
                 return True
         
+        print("   ✗ No question detected")
         return False
 
     def get_time(self):
@@ -547,27 +861,15 @@ class VoiceAssistant:
     def query_ai_local_only(self, text):
         """Send query to local AI with explicit local-only instruction"""
         try:
-            payload = {
-                "model": self.default_model,
-                "messages": [
-                    {"role": "system",
-                     "content": "You are a local AI assistant. Answer questions using only your training data. If a question requires current information, real-time data, or internet searches, respond with exactly: 'I need online resources to answer that properly.'"},
-                    {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 500  # Increased to allow complete responses
-            }
-
-            response = requests.post(
-                f"{self.msty_url}/v1/chat/completions",
-                json=payload,
-                timeout=15
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                ai_response = result['choices'][0]['message']['content'].strip()
-
+            messages = [
+                {"role": "system",
+                 "content": "You are a local AI assistant. Answer questions using only your training data. If a question requires current information, real-time data, or internet searches, respond with exactly: 'I need online resources to answer that properly.'"},
+                {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
+            ]
+            
+            ai_response = self.query_backend(messages, temperature=0.7, max_tokens=500)
+            
+            if ai_response:
                 # Check if AI indicates it needs online resources
                 if "I need online resources" in ai_response:
                     if not self.request_online_permission("AI research with online context"):
@@ -587,24 +889,14 @@ class VoiceAssistant:
     def query_ai_unrestricted(self, text):
         """Send query to AI without local-only restrictions (after permission granted)"""
         try:
-            payload = {
-                "model": self.default_model,
-                "messages": [
-                    {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 500  # Increased to allow complete responses
-            }
-
-            response = requests.post(
-                f"{self.msty_url}/v1/chat/completions",
-                json=payload,
-                timeout=15
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content'].strip()
+            messages = [
+                {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
+            ]
+            
+            ai_response = self.query_backend(messages, temperature=0.7, max_tokens=500)
+            
+            if ai_response:
+                return ai_response
             else:
                 return "Sorry, I couldn't process that request"
 
@@ -630,23 +922,9 @@ class VoiceAssistant:
             # Add the current user message
             messages.append({"role": "user", "content": text})
             
-            payload = {
-                "model": self.default_model,
-                "messages": messages,
-                "temperature": 0.8,  # Slightly higher for more conversational variety
-                "max_tokens": 500
-            }
-
-            response = requests.post(
-                f"{self.msty_url}/v1/chat/completions",
-                json=payload,
-                timeout=15
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                ai_response = result['choices'][0]['message']['content'].strip()
-                
+            ai_response = self.query_backend(messages, temperature=0.8, max_tokens=500)
+            
+            if ai_response:
                 # Update conversation history
                 self.conversation_history.append({"role": "user", "content": text})
                 self.conversation_history.append({"role": "assistant", "content": ai_response})
@@ -955,8 +1233,6 @@ class VoiceAssistant:
                     answer_text = self.speech_to_text(answer_audio)
                     if answer_text:
                         print(f"📝 User answered: '{answer_text}'")
-                        # Process the answer as a conversational follow-up
-                        follow_up_response = self.handle_conversational_response(answer_text)
                         
                         # Check for shutdown in conversation
                         if self.shutdown_phrase in answer_text.lower():
@@ -964,13 +1240,39 @@ class VoiceAssistant:
                             self.shutdown()
                             return
                         
+                        # Process the answer as a conversational follow-up - NOT through route_query!
+                        follow_up_response = self.handle_conversational_response(answer_text)
+                        
                         # Speak the follow-up response and check if it contains another question
                         was_interrupted = self.speak(follow_up_response, allow_interruption=True)
                         
                         if not was_interrupted and self.contains_question(follow_up_response):
                             # Continue the conversation if AI asks another question
                             print("🔄 Continuing conversation...")
-                            self.handle_voice_command()  # Recursive call to continue
+                            # Don't reset everything - just continue listening
+                            continue_conversation = True
+                            while continue_conversation:
+                                answer_audio = self.record_command(conversational=True)
+                                if answer_audio:
+                                    answer_text = self.speech_to_text(answer_audio)
+                                    if answer_text:
+                                        print(f"📝 User answered: '{answer_text}'")
+                                        
+                                        # Check for shutdown
+                                        if self.shutdown_phrase in answer_text.lower():
+                                            self.speak("Okay, bye!", allow_interruption=False)
+                                            self.shutdown()
+                                            return
+                                        
+                                        # Continue the conversation
+                                        follow_up_response = self.handle_conversational_response(answer_text)
+                                        was_interrupted = self.speak(follow_up_response, allow_interruption=True)
+                                        
+                                        # Check if we should continue
+                                        if was_interrupted or not self.contains_question(follow_up_response):
+                                            continue_conversation = False
+                                else:
+                                    continue_conversation = False
 
             # Add a small pause to ensure audio operations complete
             time.sleep(0.5)
@@ -990,7 +1292,7 @@ class VoiceAssistant:
 
     def startup_message(self):
         """Play welcome message on startup"""
-        welcome_msg = "Welcome. Ziggy is ready to assist you."
+        welcome_msg = f"Welcome. Ziggy is ready to assist you, connected to {self.backend_name}."
         print(f"🤖 {welcome_msg}")
         self.speak(welcome_msg, allow_interruption=False)
 
@@ -998,6 +1300,34 @@ class VoiceAssistant:
         """Gracefully shutdown the voice assistant"""
         print("🛑 Shutting down Ziggy...")
         self.is_listening = False
+        
+        # Handle backend process if we started one
+        if self.backend_process:
+            # Ask if we should keep it running
+            keep_text = f"Should I keep {self.backend_name} running after I shut down?"
+            self.speak(keep_text, allow_interruption=False)
+            
+            # Record response
+            audio_data = self.record_backend_choice()
+            if audio_data:
+                response_text = self.speech_to_text(audio_data)
+                response_lower = response_text.lower().strip()
+                
+                # Check for affirmative
+                if any(word in response_lower for word in ['yes', 'yeah', 'yep', 'keep', 'leave']):
+                    print(f"✅ Leaving {self.backend_name} running")
+                else:
+                    print(f"🛑 Stopping {self.backend_name}...")
+                    self.backend_process.terminate()
+                    try:
+                        self.backend_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        self.backend_process.kill()
+                    print(f"✅ {self.backend_name} stopped")
+            else:
+                # No response - default to leaving it running
+                print(f"✅ Leaving {self.backend_name} running (no response)")
+        
         if self.audio:
             self.audio.terminate()
         print("👋 Goodbye!")
