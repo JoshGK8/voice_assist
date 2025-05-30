@@ -18,6 +18,7 @@ Dependencies: vosk, pyaudio, requests
 """
 
 import json
+import os
 import re
 import subprocess
 import time
@@ -44,6 +45,8 @@ class VoiceAssistant:
         self.shutdown_phrase = "take a break"
         self.is_listening = True
         self.is_processing = False
+        self.conversational_mode = False  # Track if we're in a conversation
+        self.conversation_history = []  # Store conversation context
 
         # Audio configuration
         self.sample_rate = 16000
@@ -108,16 +111,37 @@ class VoiceAssistant:
                 return
 
             # Test text-to-speech
-            try:
-                result = subprocess.run(['which', 'espeak'], capture_output=True, text=True)
-                if result.returncode == 0:
-                    print("✅ Text-to-speech system ready")
-                else:
-                    print("❌ espeak not found - install with: sudo apt install espeak")
+            # First try Piper
+            self.piper_available = False
+            self.piper_path = os.path.expanduser("~/.local/share/piper/piper/piper")
+            self.piper_model = os.path.expanduser("~/.local/share/piper/en_US-amy-medium.onnx")
+            
+            if os.path.exists(self.piper_path) and os.path.exists(self.piper_model):
+                try:
+                    # Test Piper
+                    result = subprocess.run(
+                        [self.piper_path, "--version"],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode == 0:
+                        self.piper_available = True
+                        print("✅ Piper TTS ready (natural voice)")
+                except Exception:
+                    pass
+            
+            # Fallback to espeak
+            if not self.piper_available:
+                try:
+                    result = subprocess.run(['which', 'espeak'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        print("✅ Text-to-speech system ready (using espeak)")
+                    else:
+                        print("❌ No TTS system found - install espeak or set up Piper")
+                        return
+                except Exception as e:
+                    print(f"❌ Text-to-speech error: {e}")
                     return
-            except Exception as e:
-                print(f"❌ Text-to-speech error: {e}")
-                return
 
             self.setup_successful = True
             print("🎉 All systems ready!")
@@ -133,12 +157,32 @@ class VoiceAssistant:
 
             if not allow_interruption or len(text) < 100:
                 # Short responses - speak normally without interruption
-                subprocess.run([
-                    'espeak',
-                    '-s', '150',  # Speed (words per minute)
-                    '-v', 'en',  # Voice (English)
-                    text
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if self.piper_available:
+                    # Use Piper for natural voice
+                    # Escape single quotes in text
+                    escaped_text = text.replace("'", "'\"'\"'")
+                    process = subprocess.Popen(
+                        f"echo '{escaped_text}' | {self.piper_path} --model {self.piper_model} --output-raw",
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL
+                    )
+                    # Play the audio
+                    play_process = subprocess.Popen(
+                        ['aplay', '-r', '22050', '-f', 'S16_LE', '-t', 'raw', '-'],
+                        stdin=process.stdout,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    play_process.wait()
+                else:
+                    # Fallback to espeak
+                    subprocess.run([
+                        'espeak',
+                        '-s', '150',  # Speed (words per minute)
+                        '-v', 'en',  # Voice (English)
+                        text
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 return False  # Not interrupted
 
             # Long responses - enable interruption
@@ -173,12 +217,30 @@ class VoiceAssistant:
                     break
 
                 # Speak this sentence
-                process = subprocess.Popen([
-                    'espeak',
-                    '-s', '150',
-                    '-v', 'en',
-                    sentence.strip()
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if self.piper_available:
+                    # Use Piper
+                    # Escape single quotes in sentence
+                    escaped_sentence = sentence.strip().replace("'", "'\"'\"'")
+                    piper_process = subprocess.Popen(
+                        f"echo '{escaped_sentence}' | {self.piper_path} --model {self.piper_model} --output-raw",
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL
+                    )
+                    process = subprocess.Popen(
+                        ['aplay', '-r', '22050', '-f', 'S16_LE', '-t', 'raw', '-'],
+                        stdin=piper_process.stdout,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                else:
+                    # Use espeak
+                    process = subprocess.Popen([
+                        'espeak',
+                        '-s', '150',
+                        '-v', 'en',
+                        sentence.strip()
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
                 # Wait for sentence to finish, checking for interruption
                 while process.poll() is None:
@@ -274,6 +336,29 @@ class VoiceAssistant:
 
         return cleaned_sentences if cleaned_sentences else [text]
 
+    def contains_question(self, text):
+        """Check if the text contains a question"""
+        # Check for question marks
+        if '?' in text:
+            return True
+        
+        # Check for question words at the beginning of sentences
+        question_starters = [
+            'what', 'where', 'when', 'who', 'why', 'how',
+            'would', 'could', 'should', 'can', 'will', 'do',
+            'does', 'did', 'is', 'are', 'was', 'were',
+            'have', 'has', 'had', 'may', 'might'
+        ]
+        
+        # Split into sentences and check each
+        sentences = text.split('.')
+        for sentence in sentences:
+            sentence = sentence.strip().lower()
+            if any(sentence.startswith(word + ' ') for word in question_starters):
+                return True
+        
+        return False
+
     def get_time(self):
         """Get current time - local function"""
         now = datetime.now()
@@ -324,12 +409,15 @@ class VoiceAssistant:
         """Request explicit permission before any online activity"""
         permission_text = f"I cannot answer that from my local resources. Do you want me to check online?"
 
+        # Enter conversational mode
+        self.conversational_mode = True
+        
         # Use non-interruptible speech for permission requests (they're short)
         self.speak(permission_text, allow_interruption=False)
         print(f"🌐 Requesting online permission for: {query_type}")
 
-        # Record user response
-        response_audio = self.record_command(duration=3)
+        # Record user response in conversational mode
+        response_audio = self.record_command(duration=3, conversational=True)
         if response_audio:
             response_text = self.speech_to_text(response_audio)
             response_lower = response_text.lower().strip()
@@ -360,11 +448,15 @@ class VoiceAssistant:
 
         # Offer two options
         options_text = "Would you like me to read you the answer, or open a browser window?"
+        
+        # Stay in conversational mode
+        self.conversational_mode = True
+        
         self.speak(options_text, allow_interruption=False)  # Short question
         print(f"🤔 Asking user preference: read vs browse")
 
-        # Record user response
-        response_audio = self.record_command(duration=4)
+        # Record user response in conversational mode
+        response_audio = self.record_command(duration=4, conversational=True)
         if response_audio:
             response_text = self.speech_to_text(response_audio)
             response_lower = response_text.lower().strip()
@@ -463,7 +555,7 @@ class VoiceAssistant:
                     {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 150
+                "max_tokens": 500  # Increased to allow complete responses
             }
 
             response = requests.post(
@@ -501,7 +593,7 @@ class VoiceAssistant:
                     {"role": "user", "content": f"Please provide a brief, spoken response to: {text}"}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 150
+                "max_tokens": 500  # Increased to allow complete responses
             }
 
             response = requests.post(
@@ -520,6 +612,53 @@ class VoiceAssistant:
             print(f"AI query error: {e}")
             return "Sorry, there was an error processing your request"
 
+    def handle_conversational_response(self, text):
+        """Handle responses during conversational mode with full context"""
+        try:
+            # Build messages with conversation history
+            messages = [
+                {"role": "system",
+                 "content": "You are having a friendly conversation. Respond naturally and keep the conversation flowing. Feel free to ask follow-up questions or share related thoughts. Be engaging and personable."}
+            ]
+            
+            # Add conversation history (limit to last 10 exchanges to manage context size)
+            history_limit = 10
+            start_index = max(0, len(self.conversation_history) - history_limit)
+            for msg in self.conversation_history[start_index:]:
+                messages.append(msg)
+            
+            # Add the current user message
+            messages.append({"role": "user", "content": text})
+            
+            payload = {
+                "model": self.default_model,
+                "messages": messages,
+                "temperature": 0.8,  # Slightly higher for more conversational variety
+                "max_tokens": 500
+            }
+
+            response = requests.post(
+                f"{self.msty_url}/v1/chat/completions",
+                json=payload,
+                timeout=15
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                ai_response = result['choices'][0]['message']['content'].strip()
+                
+                # Update conversation history
+                self.conversation_history.append({"role": "user", "content": text})
+                self.conversation_history.append({"role": "assistant", "content": ai_response})
+                
+                return ai_response
+            else:
+                return "Sorry, I couldn't process that response"
+
+        except Exception as e:
+            print(f"Conversational AI error: {e}")
+            return "Sorry, there was an error continuing our conversation"
+
     def route_query(self, text):
         """Route query to appropriate handler"""
         text_lower = text.lower().strip()
@@ -527,6 +666,12 @@ class VoiceAssistant:
         # Check for shutdown command
         if self.shutdown_phrase in text_lower:
             return "shutdown", "Okay, bye!"
+
+        # Check for new conversation command
+        if any(phrase in text_lower for phrase in ['new conversation', 'start over', 'clear history', 'fresh start']):
+            self.conversation_history = []
+            print("🧹 Cleared conversation history (user requested)")
+            return "local", "Starting fresh. What would you like to talk about?"
 
         # Time queries
         if any(word in text_lower for word in ['time', 'clock', "what time"]):
@@ -552,10 +697,13 @@ class VoiceAssistant:
         # Send to AI for complex queries (local-first with permission model)
         return "ai", self.query_ai_local_only(text)
 
-    def record_command(self, duration=5):
-        """Record audio command after wake word detection"""
+    def record_command(self, duration=5, conversational=False):
+        """Record audio command until pause detected"""
         try:
-            print(f"🎤 Recording command for {duration} seconds...")
+            if conversational:
+                print(f"💬 Listening for your response...")
+            else:
+                print(f"🎤 Recording until pause detected...")
 
             stream = self.audio.open(
                 format=self.format,
@@ -566,12 +714,60 @@ class VoiceAssistant:
             )
 
             frames = []
-            for _ in range(0, int(self.sample_rate / self.chunk_size * duration)):
+            recognizer = vosk.KaldiRecognizer(self.vosk_model, self.sample_rate)
+            
+            # Voice activity detection parameters
+            silence_threshold = 1.5  # seconds of silence before stopping
+            max_duration = 30  # maximum recording duration in seconds
+            
+            # For conversational mode, start with a shorter initial wait
+            if conversational:
+                initial_wait = 0.3  # Wait briefly for user to start speaking
+                time.sleep(initial_wait)
+            
+            last_speech_time = time.time()
+            start_time = time.time()
+            has_speech = False
+            
+            while True:
+                current_time = time.time()
+                
+                # Check for maximum duration
+                if current_time - start_time > max_duration:
+                    print("⏱️ Maximum recording duration reached")
+                    break
+                
+                # Read audio chunk
                 data = stream.read(self.chunk_size, exception_on_overflow=False)
                 frames.append(data)
+                
+                # Check for speech using Vosk's partial recognition
+                if recognizer.AcceptWaveform(data):
+                    result = json.loads(recognizer.Result())
+                    if result.get('text'):
+                        # Speech detected
+                        last_speech_time = current_time
+                        has_speech = True
+                else:
+                    # Check partial result for ongoing speech
+                    partial = json.loads(recognizer.PartialResult())
+                    if partial.get('partial'):
+                        # Ongoing speech detected
+                        last_speech_time = current_time
+                        has_speech = True
+                
+                # Check for silence after speech
+                if has_speech and (current_time - last_speech_time) > silence_threshold:
+                    print(f"🔇 Pause detected after {current_time - start_time:.1f} seconds")
+                    break
 
             stream.close()
-            return b''.join(frames)
+            
+            # Return recorded audio
+            if frames:
+                return b''.join(frames)
+            else:
+                return None
 
         except Exception as e:
             print(f"Recording error: {e}")
@@ -697,6 +893,17 @@ class VoiceAssistant:
         """Handle complete voice interaction after wake word"""
         try:
             self.is_processing = True
+            self.conversational_mode = False  # Reset at start of new interaction
+            
+            # Check if we should clear conversation history (after timeout or explicit new conversation)
+            # Clear history if it's been more than 5 minutes since last interaction
+            if hasattr(self, 'last_interaction_time'):
+                if time.time() - self.last_interaction_time > 300:  # 5 minutes
+                    self.conversation_history = []
+                    print("🧹 Cleared conversation history (timeout)")
+            
+            self.last_interaction_time = time.time()
+            
             self.speak("Yes?", allow_interruption=False)  # Short acknowledgment
 
             # Record the user's command
@@ -721,6 +928,11 @@ class VoiceAssistant:
                 self.shutdown()
                 return
 
+            # Store initial exchange in conversation history
+            if route_type == "ai":
+                self.conversation_history.append({"role": "user", "content": command_text})
+                self.conversation_history.append({"role": "assistant", "content": response})
+
             # Speak the response with interruption capability for long responses
             was_interrupted = self.speak(response, allow_interruption=True)
 
@@ -731,6 +943,34 @@ class VoiceAssistant:
                 return
             else:
                 print(f"✅ Response delivered completely")
+
+            # Check if the response contains a question
+            if self.contains_question(response):
+                print("❓ Response contains a question - entering conversational mode")
+                self.conversational_mode = True
+                
+                # Listen for the answer
+                answer_audio = self.record_command(conversational=True)
+                if answer_audio:
+                    answer_text = self.speech_to_text(answer_audio)
+                    if answer_text:
+                        print(f"📝 User answered: '{answer_text}'")
+                        # Process the answer as a conversational follow-up
+                        follow_up_response = self.handle_conversational_response(answer_text)
+                        
+                        # Check for shutdown in conversation
+                        if self.shutdown_phrase in answer_text.lower():
+                            self.speak("Okay, bye!", allow_interruption=False)
+                            self.shutdown()
+                            return
+                        
+                        # Speak the follow-up response and check if it contains another question
+                        was_interrupted = self.speak(follow_up_response, allow_interruption=True)
+                        
+                        if not was_interrupted and self.contains_question(follow_up_response):
+                            # Continue the conversation if AI asks another question
+                            print("🔄 Continuing conversation...")
+                            self.handle_voice_command()  # Recursive call to continue
 
             # Add a small pause to ensure audio operations complete
             time.sleep(0.5)
@@ -745,6 +985,7 @@ class VoiceAssistant:
             self.speak("Sorry, I had trouble processing that", allow_interruption=False)
         finally:
             self.is_processing = False
+            self.conversational_mode = False  # Reset conversational mode
             print("👂 Ready to listen for wake word again...")
 
     def startup_message(self):
