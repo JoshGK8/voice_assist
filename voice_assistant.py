@@ -1164,12 +1164,20 @@ class VoiceAssistant:
             print("🧹 Cleared conversation history (user requested)")
             return "local", "Starting fresh. What would you like to talk about?"
 
-        # Profile management commands
-        if 'switch to' in text_lower and any(word in text_lower for word in ['mode', 'profile']):
-            # Extract profile name
-            profile_words = text_lower.split('switch to')[-1].strip()
-            profile_words = profile_words.replace('mode', '').replace('profile', '').strip()
-            return "local", self.switch_profile(profile_words)
+        # Profile management commands - support various phrasings
+        profile_triggers = [
+            ('switch to', 'mode'), ('switched to', 'mode'), ('change to', 'mode'),
+            ('use', 'mode'), ('set', 'mode'), ('enable', 'mode'),
+            ('switch to', 'profile'), ('switched to', 'profile'), ('change to', 'profile'),
+            ('use', 'profile'), ('set', 'profile'), ('enable', 'profile')
+        ]
+        
+        for trigger, keyword in profile_triggers:
+            if trigger in text_lower and keyword in text_lower:
+                # Extract profile name after the trigger word
+                profile_words = text_lower.split(trigger)[-1].strip()
+                profile_words = profile_words.replace('mode', '').replace('profile', '').strip()
+                return "local", self.switch_profile(profile_words)
         
         if 'what profile' in text_lower or 'which profile' in text_lower or 'current profile' in text_lower:
             mem_status = self.get_memory_status()
