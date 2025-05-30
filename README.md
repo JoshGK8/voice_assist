@@ -228,50 +228,6 @@ self.sample_rate = 16000    # Audio sample rate
 self.chunk_size = 4000      # Buffer size
 ```
 
-## 🔧 Auto-Start Setup
-
-### systemd Service (System-wide)
-```bash
-# Create service file (replace paths and username)
-sudo tee /etc/systemd/system/ziggy.service << 'EOF'
-[Unit]
-Description=Ziggy Voice Assistant
-After=graphical.target sound.target
-
-[Service]
-Type=simple
-User=your-username
-WorkingDirectory=/path/to/voice_assist
-ExecStart=/path/to/voice_assist/voice_assistant_env/bin/python /path/to/voice_assist/voice_assistant.py
-Restart=always
-RestartSec=10
-Environment="DISPLAY=:0"
-Environment="PULSE_RUNTIME_PATH=/run/user/1000/pulse"
-
-[Install]
-WantedBy=default.target
-EOF
-
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable ziggy.service
-sudo systemctl start ziggy.service
-```
-
-### Desktop Autostart (User Session)
-```bash
-mkdir -p ~/.config/autostart
-cat > ~/.config/autostart/ziggy.desktop << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=Ziggy Voice Assistant
-Exec=/path/to/voice_assist/voice_assistant_env/bin/python /path/to/voice_assist/voice_assistant.py
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-EOF
-```
-
 ## 🐛 Troubleshooting
 
 ### Audio Issues
