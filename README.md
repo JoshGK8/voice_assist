@@ -1,16 +1,18 @@
 # Ziggy Voice Assistant
 
-A local-first, privacy-focused voice assistant with GPU acceleration and smart query routing.
+A sophisticated, local-first, privacy-focused voice assistant with GPU acceleration, conversational abilities, and adaptive resource management.
 
-## ✨ Features
+## ✨ Key Features
 
 - **🔒 Local-First Privacy**: Explicit permission required for any online activity
-- **🎤 Custom Wake Word**: "Ziggy" detection using Vosk speech recognition
-- **🧠 Smart Query Routing**: Local functions for simple tasks, GPU-accelerated AI for complex queries
-- **🗣️ Natural Voice Responses**: Text-to-speech output with espeak
-- **⚡ GPU Acceleration**: ROCm-powered AI responses via local msty.app/Ollama
-- **🚀 Auto-Start Ready**: Boot-time activation with welcome message
-- **⏹️ Voice Shutdown**: "Ziggy, take a break" for graceful shutdown
+- **🎤 Wake Word Detection**: "Ziggy" activation using Vosk speech recognition
+- **🧠 Dual AI Backend Support**: Works with both Msty and Ollama (auto-detects and can auto-start)
+- **💬 Conversational Mode**: Natural multi-turn conversations without repeating wake word
+- **⚡ Resource Profiles**: Adaptive performance based on available GPU memory
+- **🎯 Smart Query Routing**: Local functions for simple tasks, GPU-accelerated AI for complex queries
+- **🗣️ Natural Voice Options**: Piper TTS for natural voice or espeak fallback
+- **🔄 Context Management**: Maintains conversation history with intelligent pruning
+- **⏹️ Voice Commands**: Full voice control including shutdown and profile switching
 
 ## 🎯 Local-First Philosophy
 
@@ -19,23 +21,27 @@ Ziggy prioritizes privacy and local processing:
 - **Permission-Gated Online Access**: Explicit consent required for web searches
 - **Local AI Processing**: Uses your GPU for AI queries without sending data externally
 - **No Cloud Dependencies**: Everything runs on your hardware
+- **Conversation History**: Stored in memory during session only
 
 ## 🛠️ System Requirements
 
 ### Hardware
-- **CPU**: Multi-core processor (tested on AMD Ryzen 9 5950X)
-- **GPU**: AMD GPU with ROCm support (tested on RX 7900 XTX)
-- **RAM**: 4GB+ (8GB+ recommended for larger AI models)
+- **CPU**: Multi-core processor
+- **GPU**: 
+  - **Minimum**: 4GB VRAM (integrated graphics or older GPUs)
+  - **Recommended**: 8GB+ VRAM (NVIDIA or AMD GPU)
+  - **Optimal**: 16GB+ VRAM for extended conversations
+- **RAM**: 4GB+ system RAM
 - **Audio**: Microphone and speakers/headphones
 
 ### Software
-- **OS**: Ubuntu 24.04.1 LTS (or compatible Debian-based system)
-- **Python**: 3.12+
-- **AI Backend**: msty.app or Ollama running locally on port 10000
+- **OS**: Linux (tested on Ubuntu 24.04.1 LTS)
+- **Python**: 3.10+
+- **AI Backend**: Msty or Ollama (assistant can auto-start if needed)
 
 ## 📦 Installation
 
-### 1. Clone Directory
+### 1. Clone Repository
 ```bash
 git clone https://github.com/JoshGK8/voice_assist
 cd voice_assist
@@ -43,13 +49,8 @@ cd voice_assist
 
 ### 2. Install System Dependencies
 
-You can install the system dependencies either via a shell script or manually. 
 <details>
-  
-<summary>Scripted Install</summary>
-
- 
-I have provided the same shell script I use to configure my machine (running Ubuntu 24.04):
+<summary>Scripted Install (Recommended)</summary>
 
 ```bash
 # Run the system prerequisites installer
@@ -60,31 +61,26 @@ chmod +x system_prerequisites.sh
 </details>
 
 <details>
-  
 <summary>Manual Install</summary>
 
- 
-Manually install the following:
-
-- ``portaudio19-dev``
-- ``espeak espeak-data libespeak1 libespeak-dev``
-- ``build-essential python3-dev``
-- ``curl``
-
-Optionally, these tools can help with troubleshooting audio issues:
-
-- ``alsa-utils pulseaudio-utils``
-
-Add your user to the *audio* group:
-
+Install the following packages:
 ```bash
-echo "Adding $USER to audio group..."
+# Audio and speech libraries
+sudo apt install portaudio19-dev espeak espeak-data libespeak1 libespeak-dev
+
+# Build tools
+sudo apt install build-essential python3-dev curl
+
+# Optional: Audio troubleshooting tools
+sudo apt install alsa-utils pulseaudio-utils
+
+# Add user to audio group
 sudo usermod -a -G audio $USER
 ```
 
 </details>
 
-After installing the prerequisites, log out and back in to complete the group membership update.
+**Important**: Log out and back in after installation to apply group changes.
 
 ### 3. Set Up Python Environment
 ```bash
@@ -105,11 +101,26 @@ wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
 unzip vosk-model-small-en-us-0.15.zip
 ```
 
-### 5. Configure AI Backend
-Ensure msty.app/Ollama is running locally:
+### 5. Set Up AI Backend (Optional)
+The assistant will auto-detect running backends or offer to start one:
+
+**Option A: Ollama** (Recommended)
 ```bash
-# Verify AI backend is accessible
-curl http://localhost:10000/v1/models
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull a model (assistant will use first available)
+ollama pull llama3.2
+```
+
+**Option B: Msty**
+Download and install from [msty.app](https://msty.app)
+
+### 6. Optional: Natural Voice Setup
+For better voice quality than espeak:
+```bash
+chmod +x setup_piper.sh
+./setup_piper.sh
 ```
 
 ## 🚀 Usage
@@ -119,74 +130,114 @@ curl http://localhost:10000/v1/models
 # Activate virtual environment
 source voice_assistant_env/bin/activate
 
-# Run Ziggy
+# Run with auto-detected profile
 python3 voice_assistant.py
+
+# Or specify a profile
+python3 voice_assistant.py --profile minimal  # For gaming/multitasking
+python3 voice_assistant.py --profile performance  # For research/long conversations
 ```
 
 ### Voice Commands
 
 **Activation**: Say "Ziggy" to wake the assistant
 
-**Local Functions** (no AI needed):
+**Conversational Mode**:
+- Assistant automatically listens after asking questions
+- No need to say "Ziggy" during conversations
+- Maintains context across multiple exchanges
+- Say "new conversation" to clear history
+
+**Resource Profiles**:
+- "Switch to gaming mode" - Minimal resource usage
+- "Use standard profile" - Balanced performance
+- "Enable performance mode" - Maximum capabilities
+- "What profile are you using?" - Check current status
+- "How much memory?" - Get resource usage info
+
+**Local Functions** (instant, no AI):
 - "What time is it?"
-- "What's today's date?"
-- "Convert 32 fahrenheit to celsius"
+- "What's the date?"
+- "Convert 72 fahrenheit to celsius"
+- "How many meters in 50 feet?"
 
 **AI Queries** (uses local GPU):
-- "Explain quantum computing"
-- "Write a haiku about computers"
-- "How do I fix a GPU driver issue?"
+- Complex questions and analysis
+- Creative writing and coding help
+- Technical explanations
+- General knowledge (within training data)
 
 **Web Search** (requires permission):
-- "Search for weather forecast"
-- "Look up Ubuntu release notes"
+- "Search for current weather"
+- "Look up latest news"
+- Assistant asks permission before going online
 
-**Shutdown**: Say "Ziggy, take a break"
+**System Control**:
+- "Take a break" - Shutdown assistant
+- "Start over" / "New conversation" - Clear context
+- "What are you running?" - System information
 
-### Privacy Protection
+### Conversational Flow Example
+```
+You: "Ziggy"
+Ziggy: "Yes?"
+You: "What's quantum computing?"
+Ziggy: [Explains quantum computing and asks if you want to know more]
+You: "Yes, how does it differ from regular computing?"  # No wake word needed!
+Ziggy: [Continues explanation naturally]
+```
 
-When Ziggy needs online resources, it will ask:
-> "I cannot answer that from my local resources. Do you want me to check online?"
+## ⚙️ Resource Profiles
 
-Respond with "yes" to grant permission, or "no" to stay local.
+Ziggy adapts to your system capabilities:
 
-## ⚙️ Configuration
+### Minimal Profile (Gaming/Multitasking)
+- **Requirements**: 4-8GB VRAM
+- **Context**: 8,000 tokens
+- **History**: 10 conversation turns
+- **Recording**: 2 minutes conversational, 30 seconds commands
+- **Use Case**: Gaming while using assistant, older GPUs, shared systems
 
-### Wake Word Customization
-Edit `voice_assistant.py` to change wake word:
+### Standard Profile (Daily Use)
+- **Requirements**: 8-16GB VRAM
+- **Context**: 16,000 tokens
+- **History**: 25 conversation turns
+- **Recording**: 5 minutes conversational, 1 minute commands
+- **Use Case**: General productivity, balanced performance
+
+### Performance Profile (Research/Extended Use)
+- **Requirements**: 16GB+ VRAM
+- **Context**: 32,000 tokens
+- **History**: 50 conversation turns
+- **Recording**: 10 minutes conversational, 1 minute commands
+- **Use Case**: Long research sessions, complex discussions
+
+**Profile Switching**: The assistant auto-detects your GPU memory and selects an appropriate profile. You can switch profiles with voice commands or the `--profile` flag.
+
+## 🔧 Configuration
+
+### Customize Wake Word
+Edit `voice_assistant.py`:
 ```python
 self.wake_word = "ziggy"  # Change to your preferred word
 ```
 
-### AI Model Selection
-The assistant automatically uses the first available model from your AI backend. To specify a model:
-```python
-self.default_model = "llama3.2:latest"  # Set specific model
-```
-
 ### Audio Settings
-Adjust audio parameters in `voice_assistant.py`:
+Adjust in `voice_assistant.py`:
 ```python
 self.sample_rate = 16000    # Audio sample rate
 self.chunk_size = 4000      # Buffer size
 ```
 
-### Natural Voice Setup (Optional)
-For a more pleasant, natural-sounding voice:
-```bash
-./setup_piper.sh
-```
-This installs Piper TTS with the Amy voice. The assistant will automatically use it if available, falling back to espeak if not.
-
 ## 🔧 Auto-Start Setup
 
-### systemd Service (Run at Boot)
+### systemd Service (System-wide)
 ```bash
-# Create service file
+# Create service file (replace paths and username)
 sudo tee /etc/systemd/system/ziggy.service << 'EOF'
 [Unit]
 Description=Ziggy Voice Assistant
-After=graphical.target
+After=graphical.target sound.target
 
 [Service]
 Type=simple
@@ -194,14 +245,15 @@ User=your-username
 WorkingDirectory=/path/to/voice_assist
 ExecStart=/path/to/voice_assist/voice_assistant_env/bin/python /path/to/voice_assist/voice_assistant.py
 Restart=always
-RestartSec=5
-Environment=DISPLAY=:0
+RestartSec=10
+Environment="DISPLAY=:0"
+Environment="PULSE_RUNTIME_PATH=/run/user/1000/pulse"
 
 [Install]
-WantedBy=graphical.target
+WantedBy=default.target
 EOF
 
-# Enable and start service
+# Enable and start
 sudo systemctl daemon-reload
 sudo systemctl enable ziggy.service
 sudo systemctl start ziggy.service
@@ -209,7 +261,6 @@ sudo systemctl start ziggy.service
 
 ### Desktop Autostart (User Session)
 ```bash
-# Create autostart entry
 mkdir -p ~/.config/autostart
 cat > ~/.config/autostart/ziggy.desktop << 'EOF'
 [Desktop Entry]
@@ -226,96 +277,90 @@ EOF
 
 ### Audio Issues
 ```bash
-# Check audio devices
-aplay -l    # List playback devices
-arecord -l  # List recording devices
+# List devices
+aplay -l    # Playback devices
+arecord -l  # Recording devices
 
-# Verify user is in audio group
+# Test microphone
+arecord -d 5 test.wav && aplay test.wav
+
+# Check permissions
 groups | grep audio
-
-# Fix audio permissions
-sudo usermod -a -G audio $USER
-# Then logout and login
 ```
 
-### Speech Recognition Problems
-- Ensure Vosk model is downloaded and extracted
-- Check microphone is working: `arecord -l` (should list audio devices)
-- Reduce background noise
-- Speak clearly and at normal volume
-
-### AI Backend Connection
+### GPU Detection
 ```bash
-# Check if msty.app/Ollama is running
+# NVIDIA
+nvidia-smi
+
+# AMD
+rocm-smi --showmeminfo vram
+# or
+cat /sys/class/drm/card*/device/mem_info_vram_total
+```
+
+### AI Backend Issues
+```bash
+# Check Ollama
+curl http://localhost:11434/api/tags
+
+# Check Msty
 curl http://localhost:10000/v1/models
 
-# Verify GPU acceleration
-amdgpu_top  # Should show activity during AI queries
+# The assistant will offer to start backends if not running
 ```
 
-### Wake Word Detection
-- Speak "Ziggy" clearly and distinctly
-- Try adjusting microphone volume/positioning
-- Consider training custom wake word for better accuracy
-
-## 🎨 Voice Quality Upgrades
-
-### Replace espeak with Piper TTS
-For higher quality voice synthesis:
-```bash
-pip install piper-tts
-# Download Piper voice models and modify voice_assistant.py
-```
-
-### Better Wake Word Detection
-For improved accuracy, consider training custom models with your voice.
-
-## 🔄 Development
-
-### Project Structure
-```
-voice_assist/
-├── voice_assistant.py     # Main integrated assistant
-├── setup_piper.sh        # Natural voice setup (optional)
-├── requirements.txt      # Python dependencies
-├── system-prerequisites.sh # System setup
-└── README.md            # This file
-```
-
-### Adding New Local Functions
-Add functions to the `VoiceAssistant` class and update `route_query()` method to recognize new command patterns.
-
-### Extending AI Capabilities
-Modify system prompts in `query_ai_local_only()` to customize AI behavior.
+### Wake Word Problems
+- Speak clearly and distinctly
+- Reduce background noise
+- Check microphone levels
+- Consider environment acoustics
 
 ## 📊 Performance
 
-### Resource Usage
-- **Idle**: ~50MB RAM, minimal CPU
-- **Active Listening**: ~100MB RAM, <5% CPU  
-- **AI Processing**: Brief GPU utilization, <2GB VRAM
+### Resource Usage by Profile
 
-### Response Times
-- **Local Functions**: <100ms
-- **AI Queries**: 1-5 seconds (depending on model and query complexity)
-- **Wake Word Detection**: Real-time (<50ms latency)
+| Profile | Idle RAM | Active RAM | GPU VRAM | Response Time |
+|---------|----------|------------|----------|---------------|
+| Minimal | ~100MB | ~200MB | 2-4GB | 1-3 seconds |
+| Standard | ~150MB | ~300MB | 4-6GB | 1-5 seconds |
+| Performance | ~200MB | ~400MB | 6-8GB | 2-8 seconds |
+
+### Features by Profile
+
+| Feature | Minimal | Standard | Performance |
+|---------|---------|----------|-------------|
+| Conversation Length | 10 turns | 25 turns | 50 turns |
+| Context Window | 8K tokens | 16K tokens | 32K tokens |
+| Recording Time | 2 min | 5 min | 10 min |
+| Response Length | 500 tokens | 1000 tokens | 2000 tokens |
+
+## 📁 Project Structure
+```
+voice_assist/
+├── voice_assistant.py      # Main integrated assistant
+├── setup_piper.sh         # Natural voice setup (optional)
+├── requirements.txt       # Python dependencies
+├── system_prerequisites.sh # System setup script
+└── README.md             # This file
+```
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Run the assistant and verify all components work
+2. Test all features work correctly
 3. Ensure privacy principles are maintained
 4. Submit pull request with clear description
 
-## 📋 Todo / Future Improvements
+## 📋 Recent Updates
 
-- [ ] Piper TTS integration for better voice quality
-- [ ] Custom wake word training pipeline
-- [ ] Plugin system for extensible functionality
-- [ ] Web interface for configuration
-- [ ] Support for multiple AI backends
-- [ ] Voice command history and learning
-- [ ] Integration with home automation systems
+- ✅ Dual backend support (Msty/Ollama)
+- ✅ Conversational mode with automatic listening
+- ✅ Resource profiles for different hardware
+- ✅ Voice-controlled profile switching
+- ✅ Improved natural language command recognition
+- ✅ Piper TTS integration option
+- ✅ Auto backend startup with voice selection
 
 ## 📝 License
 
@@ -324,11 +369,11 @@ GPL-3.0 license
 ## 🙏 Acknowledgments
 
 - **Vosk** for offline speech recognition
-- **Porcupine/Custom wake word** for activation detection
-- **msty.app/Ollama** for local AI backend
-- **espeak** for text-to-speech synthesis
-- **AMD ROCm** for GPU acceleration
+- **Ollama/Msty** for local AI backends
+- **Piper TTS** for natural voice synthesis
+- **espeak** for fallback text-to-speech
+- **Community** for testing and feedback
 
 ---
 
-**Ziggy Voice Assistant** - Your local, private, AI-powered voice companion.
+**Ziggy Voice Assistant** - Your local, private, AI-powered conversational companion.
