@@ -11,7 +11,6 @@ A sophisticated, local-first, privacy-focused voice assistant with GPU accelerat
 - **⚡ Resource Profiles**: Adaptive performance based on available GPU memory
 - **🎯 Smart Query Routing**: Local functions for simple tasks, GPU-accelerated AI for complex queries
 - **🗣️ Natural Voice Options**: Piper TTS for natural voice or espeak fallback
-- **🔄 Context Management**: Maintains conversation history with intelligent pruning
 - **⏹️ Voice Commands**: Full voice control including shutdown and profile switching
 
 ## 🎯 Local-First Philosophy
