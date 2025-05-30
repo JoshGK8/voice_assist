@@ -171,6 +171,13 @@ self.sample_rate = 16000    # Audio sample rate
 self.chunk_size = 4000      # Buffer size
 ```
 
+### Natural Voice Setup (Optional)
+For a more pleasant, natural-sounding voice:
+```bash
+./setup_piper.sh
+```
+This installs Piper TTS with the Amy voice. The assistant will automatically use it if available, falling back to espeak if not.
+
 ## 🔧 Auto-Start Setup
 
 ### systemd Service (Run at Boot)
@@ -233,7 +240,7 @@ sudo usermod -a -G audio $USER
 
 ### Speech Recognition Problems
 - Ensure Vosk model is downloaded and extracted
-- Check microphone is working: `python3 test_audio_system.py`
+- Check microphone is working: `arecord -l` (should list audio devices)
 - Reduce background noise
 - Speak clearly and at normal volume
 
@@ -269,7 +276,7 @@ For improved accuracy, consider training custom models with your voice.
 ```
 voice_assist/
 ├── voice_assistant.py     # Main integrated assistant
-├── test_*.py             # Individual component tests
+├── setup_piper.sh        # Natural voice setup (optional)
 ├── requirements.txt      # Python dependencies
 ├── system-prerequisites.sh # System setup
 └── README.md            # This file
@@ -296,7 +303,7 @@ Modify system prompts in `query_ai_local_only()` to customize AI behavior.
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Test all components with `test_*.py` scripts
+2. Run the assistant and verify all components work
 3. Ensure privacy principles are maintained
 4. Submit pull request with clear description
 
