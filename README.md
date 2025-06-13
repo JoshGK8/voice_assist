@@ -13,6 +13,31 @@ A sophisticated, local-first, privacy-focused voice assistant with GPU accelerat
 - **🗣️ Voice Interruption**: Interrupt long responses by saying "Ziggy"
 - **⚙️ Modular Architecture**: Clean, testable, maintainable codebase
 - **🧪 Comprehensive Testing**: 72% test coverage with automated unit tests
+- **🛠️ Developer-Friendly**: Makefile for easy testing, no build process required
+
+## 🏃‍♂️ Quick Start
+
+### For Users
+```bash
+# 1. Install and run (see full installation below)
+git clone https://github.com/JoshGK8/voice_assist
+cd voice_assist
+./system_prerequisites.sh  # Install system dependencies
+source voice_assistant_env/bin/activate
+python3 voice_assistant_clean.py  # Start the assistant
+```
+
+### For Developers
+```bash
+# 1. Set up development environment
+pip install -r requirements-test.txt
+
+# 2. Run tests with Makefile (no build required!)
+make test           # Run all tests
+make test-coverage  # Coverage report  
+make test-unit      # Fast unit tests only
+make clean          # Clean up artifacts
+```
 
 ## 🏗️ Architecture
 
@@ -70,6 +95,8 @@ Ziggy prioritizes privacy and local processing:
 
 ## 📦 Installation
 
+> **Note**: No build tools required! This is a pure Python project that runs directly.
+
 ### 1. Clone Repository
 ```bash
 git clone https://github.com/JoshGK8/voice_assist
@@ -79,50 +106,51 @@ cd voice_assist
 ### 2. Install System Dependencies
 
 <details>
-<summary>Scripted Install (Recommended)</summary>
+<summary>🚀 Scripted Install (Recommended)</summary>
 
 ```bash
-# Run the system prerequisites installer
+# Run the automated system prerequisites installer
 chmod +x system_prerequisites.sh
 ./system_prerequisites.sh
 ```
+This script installs all required system packages and configures audio permissions.
 
 </details>
 
 <details>
-<summary>Manual Install</summary>
+<summary>🔧 Manual Install</summary>
 
 Install the following packages:
 ```bash
 # Audio and speech libraries
 sudo apt install portaudio19-dev espeak espeak-data libespeak1 libespeak-dev
 
-# Build tools
+# Build tools (for Python package compilation)
 sudo apt install build-essential python3-dev curl
 
 # Optional: Audio troubleshooting tools
 sudo apt install alsa-utils pulseaudio-utils
 
-# Add user to audio group
+# Add user to audio group (required for microphone access)
 sudo usermod -a -G audio $USER
 ```
 
 </details>
 
-**Important**: Log out and back in after installation to apply group changes.
+**⚠️ Important**: Log out and back in after installation to apply group changes.
 
 ### 3. Set Up Python Environment
 ```bash
 # Create virtual environment
 python3 -m venv voice_assistant_env
 
-# Activate environment
+# Activate environment (do this every time)
 source voice_assistant_env/bin/activate
 
-# Install Python dependencies
+# Install core dependencies
 pip install -r requirements.txt
 
-# Install test dependencies (optional)
+# Optional: Install test dependencies (for development/testing)
 pip install -r requirements-test.txt
 ```
 
@@ -131,28 +159,50 @@ pip install -r requirements-test.txt
 # Download Vosk model (~50MB)
 wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
 unzip vosk-model-small-en-us-0.15.zip
+
+# Verify model extracted
+ls -la vosk-model-small-en-us-0.15/
 ```
 
-### 5. Set Up AI Backend (Optional)
+### 5. Set Up AI Backend
 The assistant will auto-detect running backends or offer to start one:
 
-**Option A: Ollama** (Recommended)
+**Option A: Ollama** (Recommended for most users)
 ```bash
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull a model (assistant will use first available)
 ollama pull llama3.2
+
+# Verify installation
+ollama list
 ```
 
-**Option B: Msty**
-Download and install from [msty.app](https://msty.app)
+**Option B: Msty** (Alternative)
+```bash
+# Download and install from msty.app
+# Follow their installation instructions
+```
 
-### 6. Optional: Natural Voice Setup
+### 6. Optional: Enhanced Voice Quality
 For better voice quality than espeak:
 ```bash
 chmod +x setup_piper.sh
 ./setup_piper.sh
+```
+
+### 7. Verify Installation
+```bash
+# Activate virtual environment
+source voice_assistant_env/bin/activate
+
+# Test import (should show no errors)
+python3 -c "from voice_assistant_clean import CleanVoiceAssistant; print('✅ Installation successful')"
+
+# Check audio devices
+arecord -l  # Should list microphones
+aplay -l    # Should list speakers
 ```
 
 ## 🚀 Usage
@@ -218,25 +268,83 @@ You: "Yes, how does it differ from regular computing?"  # No wake word needed!
 Ziggy: [Continues explanation naturally]
 ```
 
-## 🧪 Testing
+## 🧪 Testing & Development
 
-The modular architecture enables comprehensive testing:
+The modular architecture enables comprehensive testing with 72% code coverage:
 
+### Quick Testing (Make Commands)
 ```bash
-# Run all tests
-./run_tests.sh
+# Activate environment first
+source voice_assistant_env/bin/activate
 
-# Or use make targets
-make test                # Run all tests
-make test-coverage      # Run with coverage report
-make test-unit          # Run only unit tests
+# Install test dependencies (one-time setup)
+make install-test-deps
+
+# Run all tests (recommended for development)
+make test
+
+# Run with detailed coverage report
+make test-coverage
+
+# Run only unit tests (fast, no external services needed)
+make test-unit
+
+# Clean up test artifacts
+make clean
+```
+
+### Manual Testing Commands
+```bash
+# Run all tests manually
+./run_tests.sh
 
 # Run specific test modules
 pytest tests/test_audio.py -v
 pytest tests/test_commands.py -v
+pytest tests/test_ai_backend.py -v
+
+# Run with coverage
+pytest --cov=src --cov-report=html --cov-report=term-missing
+
+# Run integration tests (requires Ollama running)
+pytest tests/test_integration.py -v
 ```
 
+### For Contributors & Pull Requests
+
+**Before submitting a PR**, ensure all tests pass:
+
+```bash
+# 1. Install test dependencies
+make install-test-deps
+
+# 2. Run full test suite with coverage
+make test-coverage
+
+# 3. Verify no test failures and coverage is maintained
+# 4. Test the actual voice assistant manually:
+python3 voice_assistant_clean.py
+
+# 5. Clean up before committing
+make clean
+```
+
+### Test Types
+
+- **Unit Tests**: Test individual modules in isolation (mocked dependencies)
+- **Integration Tests**: Test with real AI backends (requires Ollama running)
+- **Coverage Tests**: Ensure code coverage remains high (target: >70%)
+
 **Test Coverage**: 72% overall with comprehensive unit tests for all modules.
+
+### Continuous Integration
+
+The Makefile targets work perfectly in CI/CD pipelines:
+```yaml
+# Example GitHub Actions
+- run: make install-test-deps
+- run: make test-coverage
+```
 
 ## ⚙️ Resource Profiles
 
@@ -366,13 +474,85 @@ voice_assist/
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create feature branch from main
-3. Write tests for new functionality  
-4. Ensure all tests pass: `make test`
-5. Test all features work correctly
-6. Ensure privacy principles are maintained
-7. Submit pull request with clear description
+We welcome contributions! Here's the recommended workflow:
+
+### Development Workflow
+
+1. **Fork and Clone**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/voice_assist
+   cd voice_assist
+   ```
+
+2. **Set Up Development Environment**
+   ```bash
+   # Install system dependencies
+   ./system_prerequisites.sh
+   
+   # Set up Python environment
+   python3 -m venv voice_assistant_env
+   source voice_assistant_env/bin/activate
+   pip install -r requirements.txt
+   pip install -r requirements-test.txt
+   ```
+
+3. **Create Feature Branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+4. **Develop with Testing**
+   ```bash
+   # Run tests frequently during development
+   make test
+   
+   # Check coverage to ensure new code is tested
+   make test-coverage
+   
+   # Test specific modules you're working on
+   pytest tests/test_your_module.py -v
+   ```
+
+5. **Write Tests for New Features**
+   - Add unit tests for new functionality
+   - Follow existing test patterns in `tests/`
+   - Aim to maintain >70% coverage
+   - Test both success and failure cases
+
+6. **Pre-Commit Checklist**
+   ```bash
+   # 1. Run full test suite
+   make test-coverage
+   
+   # 2. Ensure no test failures
+   # 3. Verify coverage hasn't decreased
+   # 4. Test manually with voice assistant
+   python3 voice_assistant_clean.py
+   
+   # 5. Clean up artifacts
+   make clean
+   ```
+
+7. **Submit Pull Request**
+   - Clear description of changes
+   - Reference any related issues
+   - Include test results
+   - Ensure privacy principles are maintained
+
+### Testing Requirements
+
+- **All new code must have tests**
+- **Existing tests must continue to pass**
+- **Code coverage should not decrease**
+- **Integration tests should pass** (if you have Ollama running)
+
+### Code Standards
+
+- Follow existing code patterns and architecture
+- Use type hints where possible
+- Write clear docstrings
+- Maintain separation of concerns
+- Keep modules focused and testable
 
 ## 📋 Recent Updates
 
