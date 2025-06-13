@@ -16,11 +16,12 @@ requests>=2.25.1
 # System resource monitoring
 psutil>=5.9.0
 
+# Array processing (required for audio/speech modules)
+numpy>=1.21.0
+
 # Optional: Higher quality text-to-speech
 # Uncomment if you want to use Piper instead of espeak
 # piper-tts>=1.2.0
 
 # Optional: Additional audio processing
-# Uncomment if needed for advanced audio features
-# numpy>=1.21.0
 # scipy>=1.7.0

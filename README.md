@@ -1,24 +1,79 @@
 # Ziggy Voice Assistant
 
-A sophisticated, local-first, privacy-focused voice assistant with GPU acceleration, conversational abilities, and adaptive resource management.
+A sophisticated, local-first, privacy-focused voice assistant with GPU acceleration, conversational abilities, and modular architecture.
 
 ## ✨ Key Features
 
-- **🔒 Local-First Privacy**: Explicit permission required for any online activity
-- **🎤 Wake Word Detection**: "Ziggy" activation using Vosk speech recognition
+- **🔒 Local-First Privacy**: No web search or online functionality - purely local processing
+- **🎤 Wake Word Detection**: "Ziggy" activation using Vosk speech recognition  
 - **🧠 Dual AI Backend Support**: Works with both Msty and Ollama (auto-detects and can auto-start)
 - **💬 Conversational Mode**: Natural multi-turn conversations without repeating wake word
 - **⚡ Resource Profiles**: Adaptive performance based on available GPU memory
 - **🎯 Smart Query Routing**: Local functions for simple tasks, GPU-accelerated AI for complex queries
-- **🗣️ Natural Voice Options**: Piper TTS for natural voice or espeak fallback
-- **⏹️ Voice Commands**: Full voice control including shutdown and profile switching
+- **🗣️ Voice Interruption**: Interrupt long responses by saying "Ziggy"
+- **⚙️ Modular Architecture**: Clean, testable, maintainable codebase
+- **🧪 Comprehensive Testing**: 72% test coverage with automated unit tests
+- **🛠️ Developer-Friendly**: Makefile for easy testing, no build process required
+
+## 🏃‍♂️ Quick Start
+
+### For Users
+```bash
+# 1. Install and run (see full installation below)
+git clone https://github.com/JoshGK8/voice_assist
+cd voice_assist
+./system_prerequisites.sh  # Install system dependencies
+source voice_assistant_env/bin/activate
+python3 voice_assistant_clean.py  # Start the assistant
+```
+
+### For Developers
+```bash
+# 1. Set up development environment
+pip install -r requirements-test.txt
+
+# 2. Run tests with Makefile (no build required!)
+make test           # Run all tests
+make test-coverage  # Coverage report  
+make test-unit      # Fast unit tests only
+make clean          # Clean up artifacts
+```
+
+## 🏗️ Architecture
+
+This project features a clean, modular architecture that separates concerns and enables comprehensive testing:
+
+### Original Monolithic Design
+- Single 1665-line file with tightly coupled components
+- Difficult to test and maintain
+- Mixed responsibilities throughout
+
+### New Modular Design
+```
+src/
+├── audio/          # Audio I/O abstraction layer
+├── speech/         # Speech recognition/synthesis with interruption
+├── ai/             # AI backend management (Ollama/Msty) 
+├── commands/       # Local command routing (time, date, math)
+├── conversation/   # Conversation context management
+├── resources/      # Resource profile management
+└── utils/          # Utility functions
+
+tests/              # Comprehensive test suite
+├── test_audio.py   # Audio module tests
+├── test_speech.py  # Speech module tests
+├── test_ai_backend.py # AI backend tests
+├── test_commands.py   # Command routing tests
+├── test_conversation.py # Conversation tests
+└── test_resources.py  # Resource management tests
+```
 
 ## 🎯 Local-First Philosophy
 
 Ziggy prioritizes privacy and local processing:
-- **Local Functions**: Time, date, unit conversions handled without AI
-- **Permission-Gated Online Access**: Explicit consent required for web searches
-- **Local AI Processing**: Uses your GPU for AI queries without sending data externally
+- **Local Functions**: Time, date, math, unit conversions handled without AI
+- **No Online Access**: Web search functionality completely removed
+- **Local AI Processing**: Uses your GPU for AI queries without sending data externally  
 - **No Cloud Dependencies**: Everything runs on your hardware
 - **Conversation History**: Stored in memory during session only
 
@@ -40,6 +95,8 @@ Ziggy prioritizes privacy and local processing:
 
 ## 📦 Installation
 
+> **Note**: No build tools required! This is a pure Python project that runs directly.
+
 ### 1. Clone Repository
 ```bash
 git clone https://github.com/JoshGK8/voice_assist
@@ -49,48 +106,52 @@ cd voice_assist
 ### 2. Install System Dependencies
 
 <details>
-<summary>Scripted Install (Recommended)</summary>
+<summary>🚀 Scripted Install (Recommended)</summary>
 
 ```bash
-# Run the system prerequisites installer
+# Run the automated system prerequisites installer
 chmod +x system_prerequisites.sh
 ./system_prerequisites.sh
 ```
+This script installs all required system packages and configures audio permissions.
 
 </details>
 
 <details>
-<summary>Manual Install</summary>
+<summary>🔧 Manual Install</summary>
 
 Install the following packages:
 ```bash
 # Audio and speech libraries
 sudo apt install portaudio19-dev espeak espeak-data libespeak1 libespeak-dev
 
-# Build tools
+# Build tools (for Python package compilation)
 sudo apt install build-essential python3-dev curl
 
 # Optional: Audio troubleshooting tools
 sudo apt install alsa-utils pulseaudio-utils
 
-# Add user to audio group
+# Add user to audio group (required for microphone access)
 sudo usermod -a -G audio $USER
 ```
 
 </details>
 
-**Important**: Log out and back in after installation to apply group changes.
+**⚠️ Important**: Log out and back in after installation to apply group changes.
 
 ### 3. Set Up Python Environment
 ```bash
 # Create virtual environment
 python3 -m venv voice_assistant_env
 
-# Activate environment
+# Activate environment (do this every time)
 source voice_assistant_env/bin/activate
 
-# Install Python dependencies
+# Install core dependencies
 pip install -r requirements.txt
+
+# Optional: Install test dependencies (for development/testing)
+pip install -r requirements-test.txt
 ```
 
 ### 4. Download Speech Recognition Model
@@ -98,44 +159,69 @@ pip install -r requirements.txt
 # Download Vosk model (~50MB)
 wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
 unzip vosk-model-small-en-us-0.15.zip
+
+# Verify model extracted
+ls -la vosk-model-small-en-us-0.15/
 ```
 
-### 5. Set Up AI Backend (Optional)
+### 5. Set Up AI Backend
 The assistant will auto-detect running backends or offer to start one:
 
-**Option A: Ollama** (Recommended)
+**Option A: Ollama** (Recommended for most users)
 ```bash
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull a model (assistant will use first available)
 ollama pull llama3.2
+
+# Verify installation
+ollama list
 ```
 
-**Option B: Msty**
-Download and install from [msty.app](https://msty.app)
+**Option B: Msty** (Alternative)
+```bash
+# Download and install from msty.app
+# Follow their installation instructions
+```
 
-### 6. Optional: Natural Voice Setup
+### 6. Optional: Enhanced Voice Quality
 For better voice quality than espeak:
 ```bash
 chmod +x setup_piper.sh
 ./setup_piper.sh
 ```
 
-## 🚀 Usage
-
-### Start the Voice Assistant
+### 7. Verify Installation
 ```bash
 # Activate virtual environment
 source voice_assistant_env/bin/activate
 
-# Run with auto-detected profile
-python3 voice_assistant.py
+# Test import (should show no errors)
+python3 -c "from voice_assistant_clean import CleanVoiceAssistant; print('✅ Installation successful')"
 
-# Or specify a profile
-python3 voice_assistant.py --profile minimal  # For gaming/multitasking
-python3 voice_assistant.py --profile performance  # For research/long conversations
+# Check audio devices
+arecord -l  # Should list microphones
+aplay -l    # Should list speakers
 ```
+
+## 🚀 Usage
+
+### Available Versions
+
+**Original Monolithic Version**:
+```bash
+source voice_assistant_env/bin/activate
+python3 voice_assistant.py
+```
+
+**Clean Modular Version** (Recommended):
+```bash
+source voice_assistant_env/bin/activate
+python3 voice_assistant_clean.py
+```
+
+Both versions have identical functionality, but the clean version uses the new modular architecture.
 
 ### Voice Commands
 
@@ -149,7 +235,7 @@ python3 voice_assistant.py --profile performance  # For research/long conversati
 
 **Resource Profiles**:
 - "Switch to gaming mode" - Minimal resource usage
-- "Use standard profile" - Balanced performance
+- "Use standard profile" - Balanced performance  
 - "Enable performance mode" - Maximum capabilities
 - "What profile are you using?" - Check current status
 - "How much memory?" - Get resource usage info
@@ -157,6 +243,7 @@ python3 voice_assistant.py --profile performance  # For research/long conversati
 **Local Functions** (instant, no AI):
 - "What time is it?"
 - "What's the date?"
+- "What's 25 plus 17?"
 - "Convert 72 fahrenheit to celsius"
 - "How many meters in 50 feet?"
 
@@ -166,15 +253,10 @@ python3 voice_assistant.py --profile performance  # For research/long conversati
 - Technical explanations
 - General knowledge (within training data)
 
-**Web Search** (requires permission):
-- "Search for current weather"
-- "Look up latest news"
-- Assistant asks permission before going online
-
 **System Control**:
 - "Take a break" - Shutdown assistant
 - "Start over" / "New conversation" - Clear context
-- "What are you running?" - System information
+- "Ziggy" during long responses - Interrupt and start new command
 
 ### Conversational Flow Example
 ```
@@ -184,6 +266,84 @@ You: "What's quantum computing?"
 Ziggy: [Explains quantum computing and asks if you want to know more]
 You: "Yes, how does it differ from regular computing?"  # No wake word needed!
 Ziggy: [Continues explanation naturally]
+```
+
+## 🧪 Testing & Development
+
+The modular architecture enables comprehensive testing with 72% code coverage:
+
+### Quick Testing (Make Commands)
+```bash
+# Activate environment first
+source voice_assistant_env/bin/activate
+
+# Install test dependencies (one-time setup)
+make install-test-deps
+
+# Run all tests (recommended for development)
+make test
+
+# Run with detailed coverage report
+make test-coverage
+
+# Run only unit tests (fast, no external services needed)
+make test-unit
+
+# Clean up test artifacts
+make clean
+```
+
+### Manual Testing Commands
+```bash
+# Run all tests manually
+./run_tests.sh
+
+# Run specific test modules
+pytest tests/test_audio.py -v
+pytest tests/test_commands.py -v
+pytest tests/test_ai_backend.py -v
+
+# Run with coverage
+pytest --cov=src --cov-report=html --cov-report=term-missing
+
+# Run integration tests (requires Ollama running)
+pytest tests/test_integration.py -v
+```
+
+### For Contributors & Pull Requests
+
+**Before submitting a PR**, ensure all tests pass:
+
+```bash
+# 1. Install test dependencies
+make install-test-deps
+
+# 2. Run full test suite with coverage
+make test-coverage
+
+# 3. Verify no test failures and coverage is maintained
+# 4. Test the actual voice assistant manually:
+python3 voice_assistant_clean.py
+
+# 5. Clean up before committing
+make clean
+```
+
+### Test Types
+
+- **Unit Tests**: Test individual modules in isolation (mocked dependencies)
+- **Integration Tests**: Test with real AI backends (requires Ollama running)
+- **Coverage Tests**: Ensure code coverage remains high (target: >70%)
+
+**Test Coverage**: 72% overall with comprehensive unit tests for all modules.
+
+### Continuous Integration
+
+The Makefile targets work perfectly in CI/CD pipelines:
+```yaml
+# Example GitHub Actions
+- run: make install-test-deps
+- run: make test-coverage
 ```
 
 ## ⚙️ Resource Profiles
@@ -199,8 +359,8 @@ Ziggy adapts to your system capabilities:
 
 ### Standard Profile (Daily Use)
 - **Requirements**: 8-16GB VRAM
-- **Context**: 16,000 tokens
-- **History**: 25 conversation turns
+- **Context**: 16,000 tokens  
+- **History**: 20 conversation turns
 - **Recording**: 5 minutes conversational, 1 minute commands
 - **Use Case**: General productivity, balanced performance
 
@@ -208,24 +368,24 @@ Ziggy adapts to your system capabilities:
 - **Requirements**: 16GB+ VRAM
 - **Context**: 32,000 tokens
 - **History**: 50 conversation turns
-- **Recording**: 10 minutes conversational, 1 minute commands
+- **Recording**: 10 minutes conversational, 2 minutes commands
 - **Use Case**: Long research sessions, complex discussions
 
-**Profile Switching**: The assistant auto-detects your GPU memory and selects an appropriate profile. You can switch profiles with voice commands or the `--profile` flag.
+**Profile Switching**: The assistant auto-detects your GPU memory and selects an appropriate profile. You can switch profiles with voice commands.
 
 ## 🔧 Configuration
 
 ### Customize Wake Word
-Edit `voice_assistant.py`:
+Edit `voice_assistant_clean.py`:
 ```python
 self.wake_word = "ziggy"  # Change to your preferred word
 ```
 
 ### Audio Settings
-Adjust in `voice_assistant.py`:
+Adjust in the audio module configuration:
 ```python
-self.sample_rate = 16000    # Audio sample rate
-self.chunk_size = 4000      # Buffer size
+sample_rate = 16000    # Audio sample rate
+chunk_size = 1024      # Buffer size
 ```
 
 ## 🐛 Troubleshooting
@@ -248,7 +408,7 @@ groups | grep audio
 # NVIDIA
 nvidia-smi
 
-# AMD
+# AMD  
 rocm-smi --showmeminfo vram
 # or
 cat /sys/class/drm/card*/device/mem_info_vram_total
@@ -260,7 +420,7 @@ cat /sys/class/drm/card*/device/mem_info_vram_total
 curl http://localhost:11434/api/tags
 
 # Check Msty
-curl http://localhost:10000/v1/models
+curl http://localhost:10002/v1/models
 
 # The assistant will offer to start backends if not running
 ```
@@ -285,7 +445,7 @@ curl http://localhost:10000/v1/models
 
 | Feature | Minimal | Standard | Performance |
 |---------|---------|----------|-------------|
-| Conversation Length | 10 turns | 25 turns | 50 turns |
+| Conversation Length | 10 turns | 20 turns | 50 turns |
 | Context Window | 8K tokens | 16K tokens | 32K tokens |
 | Recording Time | 2 min | 5 min | 10 min |
 | Response Length | 500 tokens | 1000 tokens | 2000 tokens |
@@ -293,27 +453,124 @@ curl http://localhost:10000/v1/models
 ## 📁 Project Structure
 ```
 voice_assist/
-├── voice_assistant.py      # Main integrated assistant
-├── setup_piper.sh         # Natural voice setup (optional)
-├── requirements.txt       # Python dependencies
-├── system_prerequisites.sh # System setup script
-└── README.md             # This file
+├── voice_assistant.py         # Original monolithic implementation
+├── voice_assistant_clean.py   # Clean modular implementation  
+├── src/                       # Modular source code
+│   ├── audio/                 # Audio I/O abstraction
+│   ├── speech/                # Speech processing & TTS
+│   ├── ai/                    # AI backend management
+│   ├── commands/              # Local command routing
+│   ├── conversation/          # Context management
+│   └── resources/             # Resource profiles
+├── tests/                     # Comprehensive test suite
+├── pytest.ini                # Test configuration
+├── requirements.txt           # Python dependencies
+├── requirements-test.txt      # Test dependencies
+├── Makefile                   # Build targets
+├── run_tests.sh              # Test runner script
+├── setup_piper.sh            # Natural voice setup
+└── system_prerequisites.sh   # System setup script
 ```
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Test all features work correctly
-3. Ensure privacy principles are maintained
-4. Submit pull request with clear description
+We welcome contributions! Here's the recommended workflow:
+
+### Development Workflow
+
+1. **Fork and Clone**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/voice_assist
+   cd voice_assist
+   ```
+
+2. **Set Up Development Environment**
+   ```bash
+   # Install system dependencies
+   ./system_prerequisites.sh
+   
+   # Set up Python environment
+   python3 -m venv voice_assistant_env
+   source voice_assistant_env/bin/activate
+   pip install -r requirements.txt
+   pip install -r requirements-test.txt
+   ```
+
+3. **Create Feature Branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+4. **Develop with Testing**
+   ```bash
+   # Run tests frequently during development
+   make test
+   
+   # Check coverage to ensure new code is tested
+   make test-coverage
+   
+   # Test specific modules you're working on
+   pytest tests/test_your_module.py -v
+   ```
+
+5. **Write Tests for New Features**
+   - Add unit tests for new functionality
+   - Follow existing test patterns in `tests/`
+   - Aim to maintain >70% coverage
+   - Test both success and failure cases
+
+6. **Pre-Commit Checklist**
+   ```bash
+   # 1. Run full test suite
+   make test-coverage
+   
+   # 2. Ensure no test failures
+   # 3. Verify coverage hasn't decreased
+   # 4. Test manually with voice assistant
+   python3 voice_assistant_clean.py
+   
+   # 5. Clean up artifacts
+   make clean
+   ```
+
+7. **Submit Pull Request**
+   - Clear description of changes
+   - Reference any related issues
+   - Include test results
+   - Ensure privacy principles are maintained
+
+### Testing Requirements
+
+- **All new code must have tests**
+- **Existing tests must continue to pass**
+- **Code coverage should not decrease**
+- **Integration tests should pass** (if you have Ollama running)
+
+### Code Standards
+
+- Follow existing code patterns and architecture
+- Use type hints where possible
+- Write clear docstrings
+- Maintain separation of concerns
+- Keep modules focused and testable
 
 ## 📋 Recent Updates
 
+### Version 2.0 - Modular Architecture (Current)
+- ✅ **Complete modular refactoring** - Clean, testable architecture
+- ✅ **Comprehensive testing** - 72% test coverage with unit tests
+- ✅ **Removed web search** - Purely local processing
+- ✅ **Enhanced interruption handling** - Interrupt responses with wake word
+- ✅ **Improved conversation management** - Better context handling
+- ✅ **Resource profile management** - Dynamic GPU memory detection
+- ✅ **Command routing system** - Smart local vs AI query routing
+
+### Version 1.0 - Original Implementation
 - ✅ Dual backend support (Msty/Ollama)
 - ✅ Conversational mode with automatic listening
 - ✅ Resource profiles for different hardware
 - ✅ Voice-controlled profile switching
-- ✅ Improved natural language command recognition
+- ✅ Improved natural language command recognition  
 - ✅ Piper TTS integration option
 - ✅ Auto backend startup with voice selection
 
@@ -327,8 +584,9 @@ GPL-3.0 license
 - **Ollama/Msty** for local AI backends
 - **Piper TTS** for natural voice synthesis
 - **espeak** for fallback text-to-speech
+- **pytest** for comprehensive testing framework
 - **Community** for testing and feedback
 
 ---
 
-**Ziggy Voice Assistant** - Your local, private, AI-powered conversational companion.
+**Ziggy Voice Assistant** - Your local, private, AI-powered conversational companion with clean, maintainable code.
