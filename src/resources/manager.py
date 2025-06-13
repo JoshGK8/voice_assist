@@ -67,7 +67,7 @@ class ResourceManager(ResourceManagerInterface):
                 'nvidia-smi', 
                 '--query-gpu=memory.total,memory.used', 
                 '--format=csv,noheader,nounits'
-            ], capture_output=True, text=True, stderr=subprocess.DEVNULL)
+            ], capture_output=True, text=True)
             
             if result.returncode == 0 and result.stdout.strip():
                 lines = result.stdout.strip().split('\n')
@@ -83,7 +83,7 @@ class ResourceManager(ResourceManagerInterface):
         try:
             result = subprocess.run([
                 'rocm-smi', '--showmeminfo', 'vram'
-            ], capture_output=True, text=True, stderr=subprocess.DEVNULL)
+            ], capture_output=True, text=True)
             
             if result.returncode == 0:
                 # Parse AMD GPU memory info (simplified)
